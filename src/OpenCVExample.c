@@ -22,7 +22,7 @@ int main(int arg, char** args) {
 	 RegQueryValueEx(hKey, "Start Page", NULL, NULL, (LPBYTE) lpData,
 	 &buffersize);
 	 */
-	diff();
+	//diff();
 	videoHist(arg, args);
 	//videoGuess(arg, args);
 	/*CvScalar moveColor = CV_RGB(0,0,0);
