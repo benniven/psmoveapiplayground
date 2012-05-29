@@ -1,0 +1,3 @@
+[submodule "psmoveapi"]
+	path = psmoveapi
+	url = git://github.com/thp/psmoveapi.git
