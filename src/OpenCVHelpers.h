@@ -1,8 +1,7 @@
-#include <stdio.h>
-#include "opencv2/imgproc/imgproc_c.h"
-#include "opencv2/highgui/highgui_c.h"
-#include "opencv2/core/core_c.h"
 #include "MoveAPIOptions.h"
+#include "opencv2/core/core_c.h"
+#include "opencv2/highgui/highgui_c.h"
+
 
 #ifndef OPEN_CV_HELPERS_H
 #define OPEN_CV_HELPERS_H
@@ -49,5 +48,15 @@ IplImage* cvhQueryImage(CvCapture* cap);
 
 // gets an odd Kernel (does +1 if even)
 int cvhOddKernel(int k);
+
+void cvhSetCameraParameters(int AutoAEC, int AutoAGC, int AutoAWB,
+							int Exposure, int Gain,
+							int WhiteBalanceB, int WhiteBalanceG, int WhiteBalanceR);
+
+
+void cvhBackupCLDriverRegistry();
+void cvhRestoreCLDriverRegistry();
+
+
 #endif
 

@@ -1,4 +1,9 @@
+#include <stdio.h>
+#include <windows.h>
 #include "OpenCVHelpers.h"
+#include "opencv2/imgproc/imgproc_c.h"
+#include "opencv2/highgui/highgui_c.h"
+#include "opencv2/core/core_c.h"
 
 double cvhStd(int data[], int len) {
 	return sqrt(cvhVar(data, len));
@@ -189,5 +194,195 @@ int cvhOddKernel(int k) {
 	if (k % 2 == 0)
 		k++;
 	return k;
+}
+
+int fileExists(const char* file) {
+	FILE *fp = fopen(file, "r");
+	int ret = fp != 0x0;
+	if (fp)
+		fclose(fp);
+
+	return ret;
+}
+
+void cvhSetCameraParameters(int AutoAEC, int AutoAGC, int AutoAWB,
+		int Exposure, int Gain, int WhiteBalanceB, int WhiteBalanceG,
+		int WhiteBalanceR) {
+	HKEY hKey;
+	DWORD l = sizeof(DWORD);
+	char* PATH = "Software\\PS3EyeCamera\\Settings";
+	int err = RegOpenKeyEx(HKEY_CURRENT_USER, PATH, 0, KEY_ALL_ACCESS, &hKey);
+	if (err != ERROR_SUCCESS) {
+		printf("Error: %d Unable to open reg-key:  [HKCU]\%s!", err, PATH);
+		return;
+	}
+
+	if (Gain > 79)
+		Gain = 79;
+	if (Exposure > 511)
+		Exposure = 511;
+
+	DWORD dAutoAEC = AutoAEC > 0; // either 0 or 1
+	DWORD dAutoAGC = AutoAGC > 0; // either 0 or 1
+	DWORD dAutoAWB = AutoAWB > 0; // either 0 or 1
+	DWORD dExposure = Exposure; // ranges from 0-511
+	DWORD dGain = Gain; // ranges from 0-79
+	DWORD dWhiteBalanceB = WhiteBalanceB & 0xFF; // ranges from 0-255
+	DWORD dWhiteBalanceG = WhiteBalanceG & 0xFF; // ranges from 0-255
+	DWORD dWhiteBalanceR = WhiteBalanceR & 0xFF; // ranges from 0-255
+	if (AutoAEC >= 0)
+		RegSetValueExA(hKey, "AutoAEC", 0, REG_DWORD, (CONST BYTE*) &dAutoAEC,
+				l);
+	if (AutoAGC >= 0)
+		RegSetValueExA(hKey, "AutoAGC", 0, REG_DWORD, (CONST BYTE*) &dAutoAGC,
+				l);
+	if (AutoAWB >= 0)
+		RegSetValueExA(hKey, "AutoAWB", 0, REG_DWORD, (CONST BYTE*) &dAutoAWB,
+				l);
+	if (Exposure >= 0)
+		RegSetValueExA(hKey, "Exposure", 0, REG_DWORD,
+				(CONST BYTE*) &dExposure, l);
+	if (Gain >= 0)
+		RegSetValueExA(hKey, "Gain", 0, REG_DWORD, (CONST BYTE*) &dGain, l);
+	if (WhiteBalanceB >= 0)
+		RegSetValueExA(hKey, "WhiteBalanceB", 0, REG_DWORD,
+				(CONST BYTE*) &dWhiteBalanceB, l);
+	if (WhiteBalanceG >= 0)
+		RegSetValueExA(hKey, "WhiteBalanceG", 0, REG_DWORD,
+				(CONST BYTE*) &dWhiteBalanceG, l);
+	if (WhiteBalanceR >= 0)
+		RegSetValueExA(hKey, "WhiteBalanceR", 0, REG_DWORD,
+				(CONST BYTE*) &dWhiteBalanceR, l);
+}
+
+void cvhBackupCLDriverRegistry() {
+	HKEY hKey;
+	DWORD l = sizeof(DWORD);
+	DWORD AutoAEC = 0;
+	DWORD AutoAGC = 0;
+	DWORD AutoAWB = 0;
+	DWORD Exposure = 0;
+	DWORD Gain = 0;
+	DWORD wbB = 0;
+	DWORD wbG = 0;
+	DWORD wbR = 0;
+	char* PATH = "Software\\PS3EyeCamera\\Settings";
+
+	int err = RegOpenKeyEx(HKEY_CURRENT_USER, PATH, 0, KEY_ALL_ACCESS, &hKey);
+	if (err != ERROR_SUCCESS) {
+		printf("Error: %d Unable to open reg-key:  [HKCU]\%s!", err, PATH);
+		return;
+	}
+	// if there are already backup-keys, then don't backup the values!
+	err = RegQueryValueEx(hKey, "X_Gain", NULL, NULL, (LPBYTE) &Gain, &l);
+
+	if (err != ERROR_SUCCESS) {
+		RegQueryValueEx(hKey, "AutoAEC", NULL, NULL, (LPBYTE) &AutoAEC, &l);
+		RegQueryValueEx(hKey, "AutoAGC", NULL, NULL, (LPBYTE) &AutoAGC, &l);
+		RegQueryValueEx(hKey, "AutoAWB", NULL, NULL, (LPBYTE) &AutoAWB, &l);
+		RegQueryValueEx(hKey, "Exposure", NULL, NULL, (LPBYTE) &Exposure, &l);
+		RegQueryValueEx(hKey, "Gain", NULL, NULL, (LPBYTE) &Gain, &l);
+		RegQueryValueEx(hKey, "WhiteBalanceB", NULL, NULL, (LPBYTE) &wbB, &l);
+		RegQueryValueEx(hKey, "WhiteBalanceG", NULL, NULL, (LPBYTE) &wbG, &l);
+		RegQueryValueEx(hKey, "WhiteBalanceR", NULL, NULL, (LPBYTE) &wbR, &l);
+
+		RegSetValueExA(hKey, "X_AutoAEC", 0, REG_DWORD, (CONST BYTE*) &AutoAEC,
+				l);
+		RegSetValueExA(hKey, "X_AutoAGC", 0, REG_DWORD, (CONST BYTE*) &AutoAGC,
+				l);
+		RegSetValueExA(hKey, "X_AutoAWB", 0, REG_DWORD, (CONST BYTE*) &AutoAWB,
+				l);
+		RegSetValueExA(hKey, "X_Exposure", 0, REG_DWORD,
+				(CONST BYTE*) &Exposure, l);
+		RegSetValueExA(hKey, "X_Gain", 0, REG_DWORD, (CONST BYTE*) &Gain, l);
+		RegSetValueExA(hKey, "X_WhiteBalanceB", 0, REG_DWORD,
+				(CONST BYTE*) &wbB, l);
+		RegSetValueExA(hKey, "X_WhiteBalanceG", 0, REG_DWORD,
+				(CONST BYTE*) &wbG, l);
+		RegSetValueExA(hKey, "X_WhiteBalanceR", 0, REG_DWORD,
+				(CONST BYTE*) &wbR, l);
+	}
+}
+
+void cvhRestoreCLDriverRegistry() {
+	HKEY hKey;
+	DWORD l = sizeof(DWORD);
+
+	DWORD AutoAEC = 0;
+	DWORD AutoAGC = 0;
+	DWORD AutoAWB = 0;
+	DWORD Exposure = 0;
+	DWORD Gain = 0;
+	DWORD wbB = 0;
+	DWORD wbG = 0;
+	DWORD wbR = 0;
+
+	char* PATH = "Software\\PS3EyeCamera\\Settings";
+
+	int err = RegOpenKeyEx(HKEY_CURRENT_USER, PATH, 0, KEY_ALL_ACCESS, &hKey);
+	if (err != ERROR_SUCCESS) {
+		printf("Error: %d Unable to open reg-key:  [HKCU]\%s!", err, PATH);
+		return;
+	}
+
+	// if there is a backup, restore it!
+	err = RegQueryValueEx(hKey, "X_Gain", NULL, NULL, (LPBYTE) &Gain, &l);
+	if (err == ERROR_SUCCESS) {
+		err = RegQueryValueEx(hKey, "X_AutoAEC", NULL, NULL, (LPBYTE) &AutoAEC,
+				&l);
+		if (err == ERROR_SUCCESS)
+			RegSetValueExA(hKey, "AutoAEC", 0, REG_DWORD,
+					(CONST BYTE*) &AutoAEC, l);
+
+		err = RegQueryValueEx(hKey, "X_AutoAGC", NULL, NULL, (LPBYTE) &AutoAGC,
+				&l);
+		if (err == ERROR_SUCCESS)
+			RegSetValueExA(hKey, "AutoAGC", 0, REG_DWORD,
+					(CONST BYTE*) &AutoAGC, l);
+
+		err = RegQueryValueEx(hKey, "X_AutoAWB", NULL, NULL, (LPBYTE) &AutoAWB,
+				&l);
+		if (err == ERROR_SUCCESS)
+			RegSetValueExA(hKey, "AutoAWB", 0, REG_DWORD,
+					(CONST BYTE*) &AutoAWB, l);
+
+		err = RegQueryValueEx(hKey, "X_Exposure", NULL, NULL,
+				(LPBYTE) &Exposure, &l);
+		if (err == ERROR_SUCCESS)
+			RegSetValueExA(hKey, "Exposure", 0, REG_DWORD,
+					(CONST BYTE*) &Exposure, l);
+
+		err = RegQueryValueEx(hKey, "X_Gain", NULL, NULL, (LPBYTE) &Gain, &l);
+		if (err == ERROR_SUCCESS)
+			RegSetValueExA(hKey, "Gain", 0, REG_DWORD, (CONST BYTE*) &Gain, l);
+
+		err = RegQueryValueEx(hKey, "X_WhiteBalanceB", NULL, NULL,
+				(LPBYTE) &wbB, &l);
+		if (err == ERROR_SUCCESS)
+			RegSetValueExA(hKey, "WhiteBalanceB", 0, REG_DWORD,
+					(CONST BYTE*) &wbB, l);
+
+		err = RegQueryValueEx(hKey, "X_WhiteBalanceG", NULL, NULL,
+				(LPBYTE) &wbG, &l);
+		if (err == ERROR_SUCCESS)
+			RegSetValueExA(hKey, "WhiteBalanceG", 0, REG_DWORD,
+					(CONST BYTE*) &wbG, l);
+
+		err = RegQueryValueEx(hKey, "X_WhiteBalanceR", NULL, NULL,
+				(LPBYTE) &wbR, &l);
+		if (err == ERROR_SUCCESS)
+			RegSetValueExA(hKey, "WhiteBalanceR", 0, REG_DWORD,
+					(CONST BYTE*) &wbR, l);
+
+		// remove the backup!
+		RegDeleteValueA(hKey, "X_AutoAEC");
+		RegDeleteValueA(hKey, "X_AutoAGC");
+		RegDeleteValueA(hKey, "X_AutoAWB");
+		RegDeleteValueA(hKey, "X_Exposure");
+		RegDeleteValueA(hKey, "X_Gain");
+		RegDeleteValueA(hKey, "X_WhiteBalanceB");
+		RegDeleteValueA(hKey, "X_WhiteBalanceG");
+		RegDeleteValueA(hKey, "X_WhiteBalanceR");
+	}
 }
 
