@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <windows.h>
+#include <unistd.h>
 #include "OpenCVHelpers.h"
 #include "opencv2/imgproc/imgproc_c.h"
 #include "opencv2/highgui/highgui_c.h"
@@ -168,6 +169,17 @@ void cvhAutoDebugReset() {
 	autoIdx = 0;
 }
 
+void cvhWaitMoveButton(PSMove* move, int button) {
+	int pressed;
+	while (1) {
+		psmove_poll(move);
+		pressed = psmove_get_buttons(move);
+		if (pressed & button)
+			break;
+		usleep(10000);
+	}
+}
+
 void cvhWaitForESC() {
 	while (1) {
 		//If ESC key pressed
@@ -205,9 +217,8 @@ int fileExists(const char* file) {
 	return ret;
 }
 
-void cvhSetCameraParameters(int AutoAEC, int AutoAGC, int AutoAWB,
-		int Exposure, int Gain, int WhiteBalanceB, int WhiteBalanceG,
-		int WhiteBalanceR) {
+void cvhSetCameraParameters(int AutoAEC, int AutoAGC, int AutoAWB, int Exposure,
+		int Gain, int WhiteBalanceB, int WhiteBalanceG, int WhiteBalanceR) {
 	HKEY hKey;
 	DWORD l = sizeof(DWORD);
 	char* PATH = "Software\\PS3EyeCamera\\Settings";
@@ -240,8 +251,8 @@ void cvhSetCameraParameters(int AutoAEC, int AutoAGC, int AutoAWB,
 		RegSetValueExA(hKey, "AutoAWB", 0, REG_DWORD, (CONST BYTE*) &dAutoAWB,
 				l);
 	if (Exposure >= 0)
-		RegSetValueExA(hKey, "Exposure", 0, REG_DWORD,
-				(CONST BYTE*) &dExposure, l);
+		RegSetValueExA(hKey, "Exposure", 0, REG_DWORD, (CONST BYTE*) &dExposure,
+				l);
 	if (Gain >= 0)
 		RegSetValueExA(hKey, "Gain", 0, REG_DWORD, (CONST BYTE*) &dGain, l);
 	if (WhiteBalanceB >= 0)

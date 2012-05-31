@@ -2,6 +2,7 @@
 #include "opencv2/core/core_c.h"
 #include "opencv2/highgui/highgui_c.h"
 
+#include "..\psmoveapi\psmove.h"
 
 #ifndef OPEN_CV_HELPERS_H
 #define OPEN_CV_HELPERS_H
@@ -40,6 +41,7 @@ void cvhAutoDebug();
 void cvhAutoDebugReset();
 
 // waits until the uses presses ESC (only works if a windo is visible)
+void cvhWaitMoveButton(PSMove* move, int button);
 void cvhWaitForESC();
 void cvhWaitForChar(char c);
 
