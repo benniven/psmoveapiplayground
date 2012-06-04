@@ -1,74 +1,46 @@
 #include <stdio.h>
 #include <windows.h>
 #include <unistd.h>
-#include "OpenCVHelpers.h"
 #include "opencv2/imgproc/imgproc_c.h"
 #include "opencv2/highgui/highgui_c.h"
 #include "opencv2/core/core_c.h"
 
-double cvhStd(int data[], int len) {
-	return sqrt(cvhVar(data, len));
-}
+#include "OpenCVHelpers.h"
 
-double cvhVar(int data[], int len) {
+double cvhVar(double* src, int len) {
 	double f = 1.0 / (len - 1);
 	int i;
 	double sum = 0;
 	double d = 0;
-	double avg = cvhAvg(data, len);
+	double avg = cvhAvg(src, len);
 	for (i = 0; i < len; i++) {
-		d = data[i] - avg;
+		d = src[i] - avg;
 		sum = sum + d * d;
 	}
 	return sum * f;
 }
 
-double cvhAvg(int data[], int len) {
+double cvhAvg(double* src, int len) {
 	double sum = 0;
 	int i = 0;
 	for (i = 0; i < len; i++)
-		sum = sum + data[i];
+		sum = sum + src[i];
 	return sum / len;
 }
 
-double cvhStdF(double data[], int len) {
-	return sqrt(cvhVarF(data, len));
-}
-
-double cvhVarF(double data[], int len) {
-	double f = 1.0 / (len - 1);
-	int i;
-	double sum = 0;
-	double d = 0;
-	double avg = cvhAvgF(data, len);
-	for (i = 0; i < len; i++) {
-		d = data[i] - avg;
-		sum = sum + d * d;
-	}
-	return sum * f;
-}
-
-double cvhAvgF(double data[], int len) {
-	double sum = 0;
-	int i = 0;
-	for (i = 0; i < len; i++)
-		sum = sum + data[i];
-	return sum / len;
-}
-
-double cvhMagnitude(int data[], int len) {
+double cvhMagnitude(double* src, int len) {
 	double sum = 0;
 	int i;
 	for (i = 0; i < len; i++)
-		sum = sum + data[i] * data[i];
+		sum = sum + src[i] * src[i];
 
 	return sqrt(sum);
 }
 
-void cvhMinus(int left[], int right[], int dst[], int len) {
+void cvhMinus(double* l, double* r, double* result, int len) {
 	int i;
 	for (i = 0; i < len; i++)
-		dst[i] = left[i] - right[i];
+		result[i] = l[i] - r[i];
 }
 
 int cvhCreateImage(IplImage** img, CvSize s, int depth, int channels) {
@@ -114,23 +86,55 @@ int cvhCreateMemStorage(CvMemStorage** stor, int block_size) {
 	return R;
 }
 
+void cvhPutText(IplImage* img, const char* text, CvPoint p, CvScalar color) {
+	CvFont font;
+	double hScale = 0.5;
+	double vScale = 0.5;
+	int lineWidth = 1;
+	cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX | CV_FONT_ITALIC, hScale, vScale,
+			0, lineWidth, CV_AA);
+	cvPutText(img, text, p, &font, color);
+}
+
 int cvhSaveJPEG(const char* path, const CvArr* image, int quality) {
 	int imgParams[] = { CV_IMWRITE_JPEG_QUALITY, quality, 0 };
 	return cvSaveImage(path, image, imgParams);
 }
 
-void cvhPrintScalar(const char* before, CvScalar sc, const char* after) {
-	cvhPrintScalarP(before, &sc, after);
+void cvhPrintArray(double* src, int len) {
+	int i;
+	printf("%s", "{");
+	if (len > 0)
+		printf("%.2f", src[0]);
+	for (i = 1; i < len; i++)
+		printf(", %.2f", src[i]);
+	printf("%s", "}\n");
 }
 
-void cvhPrintScalarP(const char* before, CvScalar* sc, const char* after) {
-	printf(before);
-	printf("{%.0f,%.0f,%.0f,%.0f}", sc->val[0], sc->val[1], sc->val[2],
-			sc->val[3]);
-	printf(after);
+IplImage* pxHSV;
+IplImage* pxBGR;
+CvScalar cvhHSV2BGR(CvScalar hsv) {
+	if (pxHSV == 0x0) {
+		pxHSV = cvCreateImage(cvSize(1, 1), IPL_DEPTH_8U, 3);
+		pxBGR = cvCloneImage(pxHSV);
+	}
+
+	cvSet(pxHSV, hsv, 0x0);
+	cvCvtColor(pxHSV, pxBGR, CV_HSV2BGR);
+	return cvAvg(pxBGR, 0x0);
+
+}
+CvScalar cvhBGR2HSV(CvScalar bgr) {
+	if (pxHSV == 0x0) {
+		pxHSV = cvCreateImage(cvSize(1, 1), IPL_DEPTH_8U, 3);
+		pxBGR = cvCloneImage(pxHSV);
+	}
+	cvSet(pxBGR, bgr, 0x0);
+	cvCvtColor(pxBGR, pxHSV, CV_BGR2HSV);
+	return cvAvg(pxHSV, 0x0);
 }
 
-CvScalar cvhHsv2Rgb(float hue) {
+CvScalar cvhHsv2RgbALT(float hue) {
 	int rgb[3], p, sector;
 	while ((hue >= 180))
 		hue = hue - 180;
@@ -202,12 +206,6 @@ IplImage* cvhQueryImage(CvCapture* cap) {
 	return frame;
 }
 
-int cvhOddKernel(int k) {
-	if (k % 2 == 0)
-		k++;
-	return k;
-}
-
 int fileExists(const char* file) {
 	FILE *fp = fopen(file, "r");
 	int ret = fp != 0x0;
@@ -217,8 +215,27 @@ int fileExists(const char* file) {
 	return ret;
 }
 
-void cvhSetCameraParameters(int AutoAEC, int AutoAGC, int AutoAWB, int Exposure,
-		int Gain, int WhiteBalanceB, int WhiteBalanceG, int WhiteBalanceR) {
+#define regAAEC 	"AutoAEC"
+#define regAAGC 	"AutoAGC"
+#define regAAWB 	"AutoAWB"
+#define regE		"Exposure"
+#define regG		"Gain"
+#define regWBB		"WhiteBalanceB"
+#define regWBG		"WhiteBalanceG"
+#define regWBR		"WhiteBalanceR"
+
+#define regAAEC_B 	"X_AutoAEC"
+#define regAAGC_B 	"X_AutoAGC"
+#define regAAWB_B 	"X_AutoAWB"
+#define regE_B		"X_Exposure"
+#define regG_B		"X_Gain"
+#define regWBB_B	"X_WhiteBalanceB"
+#define regWBG_B	"X_WhiteBalanceG"
+#define regWBR_B	"X_WhiteBalanceR"
+
+void cvhSetCameraParameters(int AutoAEC, int AutoAGC, int AutoAWB,
+		int Exposure, int Gain, int WhiteBalanceB, int WhiteBalanceG,
+		int WhiteBalanceR) {
 	HKEY hKey;
 	DWORD l = sizeof(DWORD);
 	char* PATH = "Software\\PS3EyeCamera\\Settings";
@@ -251,8 +268,8 @@ void cvhSetCameraParameters(int AutoAEC, int AutoAGC, int AutoAWB, int Exposure,
 		RegSetValueExA(hKey, "AutoAWB", 0, REG_DWORD, (CONST BYTE*) &dAutoAWB,
 				l);
 	if (Exposure >= 0)
-		RegSetValueExA(hKey, "Exposure", 0, REG_DWORD, (CONST BYTE*) &dExposure,
-				l);
+		RegSetValueExA(hKey, "Exposure", 0, REG_DWORD,
+				(CONST BYTE*) &dExposure, l);
 	if (Gain >= 0)
 		RegSetValueExA(hKey, "Gain", 0, REG_DWORD, (CONST BYTE*) &dGain, l);
 	if (WhiteBalanceB >= 0)
@@ -266,7 +283,7 @@ void cvhSetCameraParameters(int AutoAEC, int AutoAGC, int AutoAWB, int Exposure,
 				(CONST BYTE*) &dWhiteBalanceR, l);
 }
 
-void cvhBackupCLDriverRegistry() {
+void cvhBackupCameraSettings() {
 	HKEY hKey;
 	DWORD l = sizeof(DWORD);
 	DWORD AutoAEC = 0;
@@ -315,7 +332,7 @@ void cvhBackupCLDriverRegistry() {
 	}
 }
 
-void cvhRestoreCLDriverRegistry() {
+void cvhRestoreCameraSettings() {
 	HKEY hKey;
 	DWORD l = sizeof(DWORD);
 
