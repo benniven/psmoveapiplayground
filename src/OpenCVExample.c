@@ -72,15 +72,18 @@ void calibrate() {
 		cvhWaitMoveButton(controller, Btn_T);
 		for (i = 0; i < blinks; i++) {
 			getDiff(&capture, controller, -1, images[i], diffs[i]);
-			double max;
-			sprintf(fpss, "%d.diff-raw.jpg", (int) images[i]);
-			cvhSaveJPEG(fpss, diffs[i], 100);
+
+			//sprintf(fpss, "%d.diff-raw.jpg", (int) images[i]);
+			//cvhSaveJPEG(fpss, diffs[i], 100);
 			// TODO: sind das gute werte?
 			//cvShowImage("raw diff", diffs[i]);
+			double max;
 			cvMinMaxLoc(diffs[i], 0x0, &max, 0x0, 0x0, 0x0);
 			cvThreshold(diffs[i], diffs[i], max / 3, 0xFF, CV_THRESH_BINARY);
-			sprintf(fpss, "%d.diff-th.jpg", (int) images[i]);
-			cvhSaveJPEG(fpss, diffs[i], 100);
+
+			//sprintf(fpss, "%d.diff-th.jpg", (int) images[i]);
+			//cvhSaveJPEG(fpss, diffs[i], 100);
+
 			//cvShowImage("thresholded diff", diffs[i]);
 			//cvShowImage("original image", images[i]);
 			//cvhWaitForESC();
@@ -237,13 +240,13 @@ void getDiff(CvCapture** capture, PSMove* controller, int exp, IplImage* on,
 	IplImage* mask1 = cvCloneImage(diff);
 	IplImage* mask2 = cvCloneImage(diff);
 
-	char text[256];
 	cvCvtColor(frame, grey1, CV_BGR2GRAY);
 	cvCvtColor(on, grey2, CV_BGR2GRAY);
-	sprintf(text, "%d.original_ON.jpg", (int) on);
-	cvhSaveJPEG(text, on, 100);
-	sprintf(text, "%d.original_OFF.jpg", (int) on);
-	cvhSaveJPEG(text, frame, 100);
+	//char text[256];
+	//sprintf(text, "%d.original_ON.jpg", (int) on);
+	//cvhSaveJPEG(text, on, 100);
+	//sprintf(text, "%d.original_OFF.jpg", (int) on);
+	//cvhSaveJPEG(text, frame, 100);
 	/*
 	 // find all white areas
 	 CvScalar u = cvScalarAll(250);
