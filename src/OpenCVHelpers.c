@@ -42,6 +42,11 @@ void cvhMinus(double* l, double* r, double* result, int len) {
 	for (i = 0; i < len; i++)
 		result[i] = l[i] - r[i];
 }
+void cvhPlus(double* l, double* r, double* result, int len) {
+	int i;
+	for (i = 0; i < len; i++)
+		result[i] = l[i] + r[i];
+}
 
 int cvhCreateImage(IplImage** img, CvSize s, int depth, int channels) {
 	int R = 0;
@@ -94,6 +99,31 @@ void cvhPutText(IplImage* img, const char* text, CvPoint p, CvScalar color) {
 	cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX | CV_FONT_ITALIC, hScale, vScale,
 			0, lineWidth, CV_AA);
 	cvPutText(img, text, p, &font, color);
+}
+
+IplImage* histImg;
+IplImage* cvhPlotHistogram(CvHistogram* hist, int bins, const char* windowName,
+		CvScalar lineColor) {
+	cvhCreateImage(&histImg, cvSize(512, 512 * 0.6), 8, 3);
+	float xStep = histImg->width / bins;
+	CvPoint p0, p1;
+	cvSet(histImg, cvhBlack, 0x0);
+
+	float max_value = 0;
+	cvGetMinMaxHistValue(hist, 0, &max_value, 0, 0);
+
+	int i;
+	for (i = 1; i < bins; i++) {
+		float v0 = cvGetReal1D(hist->bins, i - 1) / max_value * histImg->height;
+		float v1 = cvGetReal1D(hist->bins, i) / max_value * histImg->height;
+		p0 = cvPoint((i - 1) * xStep, histImg->height - v0);
+		p1 = cvPoint(i * xStep, histImg->height - v1);
+		cvLine(histImg, p0, p1, lineColor, 2, 8, 0);
+	}
+
+	//cvhPutText(histImg, "hello", cvPoint(33, 33), cvScalar(0xff, 0, 0xff, 0));
+	cvShowImage(windowName, histImg);
+	return histImg;
 }
 
 int cvhSaveJPEG(const char* path, const CvArr* image, int quality) {
@@ -173,6 +203,14 @@ void cvhAutoDebugReset() {
 	autoIdx = 0;
 }
 
+int cvhMoveButton(PSMove* move, int button) {
+	int pressed;
+
+	psmove_poll(move);
+	pressed = psmove_get_buttons(move);
+	return pressed & button;
+
+}
 void cvhWaitMoveButton(PSMove* move, int button) {
 	int pressed;
 	while (1) {
@@ -206,6 +244,34 @@ IplImage* cvhQueryImage(CvCapture* cap) {
 	return frame;
 }
 
+IplImage* ch0;
+IplImage* ch1;
+IplImage* ch2;
+IplImage* ch3;
+
+IplImage* cvhQueryEqualizedImage(CvCapture* cap) {
+	IplImage* frame = cvhQueryImage(cap);
+
+	cvhEqualizeImage(frame);
+
+	return frame;
+}
+
+void cvhEqualizeImage(IplImage* img)
+{
+	//return frame;
+		cvhCreateImage(&ch0, cvGetSize(img), img->depth, 1);
+		cvhCreateImage(&ch1, cvGetSize(img), img->depth, 1);
+		cvhCreateImage(&ch2, cvGetSize(img), img->depth, 1);
+		cvhCreateImage(&ch3, cvGetSize(img), img->depth, 1);
+
+		cvSplit(img, ch0, ch1, ch2, 0x0);
+		cvEqualizeHist(ch0, ch0);
+		cvEqualizeHist(ch1, ch1);
+		cvEqualizeHist(ch2, ch2);
+		cvMerge(ch0, ch1, ch2, 0x0, img);
+}
+
 int fileExists(const char* file) {
 	FILE *fp = fopen(file, "r");
 	int ret = fp != 0x0;
@@ -233,9 +299,8 @@ int fileExists(const char* file) {
 #define regWBG_B	"X_WhiteBalanceG"
 #define regWBR_B	"X_WhiteBalanceR"
 
-void cvhSetCameraParameters(int AutoAEC, int AutoAGC, int AutoAWB,
-		int Exposure, int Gain, int WhiteBalanceB, int WhiteBalanceG,
-		int WhiteBalanceR) {
+void cvhSetCameraParameters(int AutoAEC, int AutoAGC, int AutoAWB, int Exposure,
+		int Gain, int WhiteBalanceB, int WhiteBalanceG, int WhiteBalanceR) {
 	HKEY hKey;
 	DWORD l = sizeof(DWORD);
 	char* PATH = "Software\\PS3EyeCamera\\Settings";
@@ -268,8 +333,8 @@ void cvhSetCameraParameters(int AutoAEC, int AutoAGC, int AutoAWB,
 		RegSetValueExA(hKey, "AutoAWB", 0, REG_DWORD, (CONST BYTE*) &dAutoAWB,
 				l);
 	if (Exposure >= 0)
-		RegSetValueExA(hKey, "Exposure", 0, REG_DWORD,
-				(CONST BYTE*) &dExposure, l);
+		RegSetValueExA(hKey, "Exposure", 0, REG_DWORD, (CONST BYTE*) &dExposure,
+				l);
 	if (Gain >= 0)
 		RegSetValueExA(hKey, "Gain", 0, REG_DWORD, (CONST BYTE*) &dGain, l);
 	if (WhiteBalanceB >= 0)
