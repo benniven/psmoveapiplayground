@@ -23,9 +23,9 @@ int adaptToLighting(int lumMin, int expMin, int expMax);
 void autoWB();
 PSMove* connectController();
 
-#define BCr 0x00
-#define BCg 0xff
-#define BCb 0xFF
+int BCr;
+int BCg;
+int BCb;
 
 int main(int arg, char** args) {
 	//cvhBackupCLDriverRegistry();
@@ -40,7 +40,18 @@ int main(int arg, char** args) {
 void calibrate() {
 	PSMove* controller = connectController();
 	HPTimer* timer = createTimer();
-	int exp = adaptToLighting(20, 0x10, 0x18);
+	int exp = adaptToLighting(25, 0x10, 0x40);
+	float f = 1;
+
+	if (exp > 20)
+		f = 0.7;
+	if (exp > 30)
+		f = 0.5;
+
+	BCr = 0x00 * f;
+	BCg = 0x00 * f;
+	BCb = 0xFF * f;
+
 	cvhSetCameraParameters(0, 0, 0, exp, 0, 0xff, 0xff, 0xff);
 	CvCapture* capture = cvCaptureFromCAM(CV_CAP_ANY);
 	CvMemStorage* storage = cvCreateMemStorage(0);
@@ -68,7 +79,8 @@ void calibrate() {
 	CvScalar ic;
 	CvScalar hc;
 	CvScalar min, max;
-	char fpss[256];
+	float fps = 30;
+	char text[256];
 	while (1) {
 		// wait until the user presses a controller button
 		//cvhWaitMoveButton(controller, Btn_T);
@@ -131,8 +143,8 @@ void calibrate() {
 			if (contour != 0x0)
 				sizes[i] = cvContourArea(contour, CV_WHOLE_SEQ, 0);
 
-			if (contour == 0x0 || contour->h_next != 0x0
-					|| contour->h_prev != 0x0 || sizes[i] <= 100) {
+			if (contour == 0x0 || contour->h_next != 0x0 || contour->h_prev
+					!= 0x0 || sizes[i] <= 100) {
 				if (contour == 0x0)
 					printf("%s\n", "no contours!");
 				else if (contour->h_next != 0x0 || contour->h_prev != 0x0)
@@ -166,9 +178,9 @@ void calibrate() {
 	for (i = 1; i < rois; i++) {
 		IplImage* z = roiI[i - 1];
 		w = z->width;
-		roiI[i] = cvCreateImage(cvSize(w * 0.7, w * 0.7), z->depth,
+		roiI[i] = cvCreateImage(cvSize(w * 0.6, w * 0.6), z->depth,
 				z->nChannels);
-		roiM[i] = cvCreateImage(cvSize(w * 0.7, w * 0.7), z->depth, 1);
+		roiM[i] = cvCreateImage(cvSize(w * 0.6, w * 0.6), z->depth, 1);
 	}
 
 	cvhMinus(hc.val, r.val, min.val, 3);
@@ -230,8 +242,8 @@ void calibrate() {
 				cvDrawContours(roiM[roiIdx], best, cvhWhite, cvhWhite, -1,
 						CV_FILLED, 8, cvPoint(0, 0));
 
-				cvDrawContours(roiM[0], best, cvhWhite, cvhWhite, -1, CV_FILLED,
-						8, cvPoint(roi.x, roi.y));
+				cvDrawContours(roiM[0], best, cvhWhite, cvhWhite, -1,
+						CV_FILLED, 8, cvPoint(roi.x, roi.y));
 
 				CvMoments mu;
 				cvMoments(roiM[roiIdx], &mu, 0);
@@ -244,8 +256,8 @@ void calibrate() {
 				br.width = cvhMAX(br.width, br.height) * 2;
 				br.height = br.width;
 				for (i = 0; i < rois; i++) {
-					if (br.width > roiI[i]->width
-							&& br.height > roiI[i]->height)
+					if (br.width > roiI[i]->width && br.height
+							> roiI[i]->height)
 						break;
 					roiIdx = i;
 					roi.width = roiI[i]->width;
@@ -264,12 +276,6 @@ void calibrate() {
 					roi.y = roiI[0]->height - roi.height;
 			}
 			cvResetImageROI(frame);
-			cvRectangle(frame, cvPoint(roi.x, roi.y),
-					cvPoint(roi.x + roi.width, roi.y + roi.height), cvhWhite, 3,
-					8, 0);
-			cvRectangle(frame, cvPoint(roi.x, roi.y),
-					cvPoint(roi.x + roi.width, roi.y + roi.height), cvhRed, 1,
-					8, 0);
 
 			if (best || roi.width == roiI[0]->width) {
 				break;
@@ -292,14 +298,37 @@ void calibrate() {
 					roi.y = roiI[0]->height - roi.height;
 			}
 		}
-
 		stopTimer(timer);
+
+		//cvhEqualizeImage(frame);
+		//cvSmooth(frame,frame,CV_GAUSSIAN,3,3,0,0);
+
+		cvRectangle(frame, cvPoint(roi.x, roi.y), cvPoint(roi.x + roi.width,
+				roi.y + roi.height), cvhWhite, 3, 8, 0);
+		cvRectangle(frame, cvPoint(roi.x, roi.y), cvPoint(roi.x + roi.width,
+				roi.y + roi.height), cvhRed, 1, 8, 0);
+
 		cvShowImage("mask", roiM[0]);
-		sprintf(fpss,
-				"@%.0ffps   Sphere-RGB(%.0f,%.0f,%.0f)  avg/Lum(%.0f)   exp(%d)",
-				1.0 / getElapsedTime(timer), c.val[0], hc.val[1], hc.val[2],
-				avgLum, exp);
-		cvhPutText(frame, fpss, cvPoint(10, 20), c);
+
+		fps = 0.85 * fps + 0.15 * (1.0 / getElapsedTime(timer));
+
+		cvRectangle(frame, cvPoint(0, 0), cvPoint(frame->width, 25), cvhBlack,
+				CV_FILLED, 8, 0);
+		sprintf(text, "fps:%.0f", fps);
+		cvhPutText(frame, text, cvPoint(10, 20), c);
+
+		sprintf(text, "RGB:%x,%x,%x", (int)c.val[2], (int)c.val[1], (int)c.val[1]);
+		cvhPutText(frame, text, cvPoint(110, 20), c);
+
+		sprintf(text, "avg(lum):%.0f", avgLum);
+		cvhPutText(frame, text, cvPoint(255, 20), c);
+
+		sprintf(text, "exp:%d", exp);
+		cvhPutText(frame, text, cvPoint(400, 20), c);
+
+		sprintf(text, "ROI:%dx%d", roi.width, roi.height);
+		cvhPutText(frame, text, cvPoint(505, 20), c);
+
 		cvCircle(frame, p, 4, cvhBlack, 4, 8, 0);
 		cvCircle(frame, p, 4, ic, 2, 8, 0);
 		cvShowImage("live camera feed", frame);
@@ -331,7 +360,7 @@ void getDiff(CvCapture** capture, PSMove* controller, int exp, IplImage* on,
 	psmove_update_leds(controller);
 	usleep(delay);
 	frame = cvhQueryImage(*capture);
-// copy the color picture!
+	// copy the color picture!
 	cvCopy(frame, on, 0x0);
 
 	psmove_set_leds(controller, 0, 0, 0);
@@ -346,11 +375,11 @@ void getDiff(CvCapture** capture, PSMove* controller, int exp, IplImage* on,
 
 	cvCvtColor(frame, grey1, CV_BGR2GRAY);
 	cvCvtColor(on, grey2, CV_BGR2GRAY);
-//char text[256];
-//sprintf(text, "%d.original_ON.jpg", (int) on);
-//cvhSaveJPEG(text, on, 100);
-//sprintf(text, "%d.original_OFF.jpg", (int) on);
-//cvhSaveJPEG(text, frame, 100);
+	//char text[256];
+	//sprintf(text, "%d.original_ON.jpg", (int) on);
+	//cvhSaveJPEG(text, on, 100);
+	//sprintf(text, "%d.original_OFF.jpg", (int) on);
+	//cvhSaveJPEG(text, frame, 100);
 	/*
 	 // find all white areas
 	 CvScalar u = cvScalarAll(250);
@@ -372,7 +401,7 @@ void getDiff(CvCapture** capture, PSMove* controller, int exp, IplImage* on,
 	 cvAnd(grey1, mask2, grey1, 0x0);
 	 cvAnd(grey2, mask2, grey2, 0x0);
 	 */
-// calculate the diff of these two cleaned up images
+	// calculate the diff of these two cleaned up images
 	cvAbsDiff(grey1, grey2, diff);
 
 	cvReleaseImage(&grey1);
@@ -393,7 +422,7 @@ PSMove* connectController() {
 
 	if (move == NULL) {
 		printf("Could not connect to default Move controller.\n"
-				"Please connect one via USB or Bluetooth.\n");
+			"Please connect one via USB or Bluetooth.\n");
 		exit(1);
 	}
 
@@ -487,7 +516,7 @@ int adaptToLighting(int lumMin, int expMin, int expMax) {
 		}
 		counter++;
 	}
-// Release the capture device housekeeping
+	// Release the capture device housekeeping
 	cvReleaseCapture(&capture);
 	return exp;
 }
@@ -576,7 +605,7 @@ void autoWB() {
 		}
 
 	}
-// Release the capture device housekeeping
+	// Release the capture device housekeeping
 	cvReleaseCapture(&capture);
 }
 
@@ -596,7 +625,7 @@ void diff() {
 	cvSmooth(img1, img1, CV_MEDIAN, medK, medK, 0, 0);
 	cvThreshold(img1, img1, 50, 255, CV_THRESH_BINARY);
 	cvShowImage("M+G", img1);
-//cvhSaveJPEG("erg.jpg", img1, 100);
+	//cvhSaveJPEG("erg.jpg", img1, 100);
 	cvhWaitForESC();
 }
 
@@ -644,7 +673,7 @@ void videoGuess() {
 		if (key == 27)
 			break;
 	}
-// Release the capture device housekeeping
+	// Release the capture device housekeeping
 	cvReleaseCapture(&capture);
 }
 
@@ -667,8 +696,8 @@ void videoHist() {
 	cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX | CV_FONT_ITALIC, hScale, vScale,
 			0, lineWidth, CV_AA);
 
-// Create a window in which the captured images will be presented
-// Show the image captured from the camera in the window and repeat
+	// Create a window in which the captured images will be presented
+	// Show the image captured from the camera in the window and repeat
 	float diff = 0;
 	int tic;
 	char fps[256];
@@ -702,7 +731,7 @@ void videoHist() {
 		}
 
 	}
-// Release the capture device housekeeping
+	// Release the capture device housekeeping
 	cvReleaseCapture(&capture);
 }
 
