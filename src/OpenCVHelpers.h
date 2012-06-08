@@ -2,7 +2,8 @@
 #include "opencv2/core/core_c.h"
 #include "opencv2/highgui/highgui_c.h"
 #include <time.h>
-#include "..\psmoveapi\psmove.h"
+
+#include "psmove.h"
 
 #ifndef OPEN_CV_HELPERS_H
 #define OPEN_CV_HELPERS_H
@@ -44,11 +45,6 @@ void cvhPrintArray(double* src, int len);
 // converts HSV color to a BGR color and back
 CvScalar cvhHSV2BGR(CvScalar hsv);
 CvScalar cvhBGR2HSV(CvScalar bgr);
-
-// prints a message to stdout if DEBUG_OUT is defined
-void cvhDebug(const char* msg);
-void cvhAutoDebug();
-void cvhAutoDebugReset();
 
 // waits until the uses presses ESC (only works if a windo is visible)
 void cvhWaitForESC();
