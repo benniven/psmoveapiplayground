@@ -10,8 +10,8 @@ struct _HPTimer {
 	LARGE_INTEGER startCount; //
 	LARGE_INTEGER endCount; //
 #else
-	timeval startCount; //
-	timeval endCount;//
+	struct timeval startCount;
+	struct timeval endCount;
 #endif
 };
 
@@ -61,7 +61,7 @@ void stopTimer(HPTimer* t) {
 #ifdef WIN32
 	QueryPerformanceCounter(&t->endCount);
 #else
-	gettimeofday(&endCount, NULL);
+	gettimeofday(&t->endCount, NULL);
 #endif
 }
 
@@ -79,11 +79,11 @@ double getElapsedTimeInMicroSec(HPTimer* t) {
 	t->endTimeInMicroSec = t->endCount.QuadPart
 			* (1000000.0 / t->frequency.QuadPart);
 #else
-	if(!stopped)
-	gettimeofday(&endCount, NULL);
+	if(!t->stopped)
+	gettimeofday(&t->endCount, NULL);
 
-	startTimeInMicroSec = (startCount.tv_sec * 1000000.0) + startCount.tv_usec;
-	endTimeInMicroSec = (endCount.tv_sec * 1000000.0) + endCount.tv_usec;
+	t->startTimeInMicroSec = (t->startCount.tv_sec * 1000000.0) + t->startCount.tv_usec;
+	t->endTimeInMicroSec = (t->endCount.tv_sec * 1000000.0) + t->endCount.tv_usec;
 #endif
 
 	return t->endTimeInMicroSec - t->startTimeInMicroSec;

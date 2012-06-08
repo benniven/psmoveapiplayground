@@ -1,7 +1,10 @@
 #include <stdio.h>
 #include <time.h>
 #include <unistd.h>
-#include <windows.h>
+
+#ifdef WIN32
+#    include <windows.h>
+#endif
 
 #include "opencv2/core/core_c.h"
 #include "opencv2/highgui/highgui_c.h"
@@ -9,8 +12,12 @@
 
 #include "OpenCVHelpers.h"
 #include "OpenCVMoveAPI.h"
-#include "..\psmoveapi\psmove.h"
 #include "HighPrecisionTimer.h"
+
+#include "psmove.h"
+
+/* Define which camera to use (zero-based index or CV_CAP_ANY) */
+#define CAM_TO_USE 1
 
 void calibrate();
 void getDiff(CvCapture** capture, PSMove* controller, int exp, IplImage* on,
@@ -53,7 +60,7 @@ void calibrate() {
 	BCb = 0xFF * f;
 
 	cvhSetCameraParameters(0, 0, 0, exp, 0, 0xff, 0xff, 0xff);
-	CvCapture* capture = cvCaptureFromCAM(CV_CAP_ANY);
+	CvCapture* capture = cvCaptureFromCAM(CAM_TO_USE);
 	CvMemStorage* storage = cvCreateMemStorage(0);
 	if (!capture) {
 		fprintf(stderr, "ERROR: capture is NULL \n");
@@ -354,7 +361,7 @@ void getDiff(CvCapture** capture, PSMove* controller, int exp, IplImage* on,
 		cvReleaseCapture(capture);
 		cvhSetCameraParameters(0, 0, 1, exp, 0, -1, -1, -1);
 		usleep(delay);
-		cvCaptureFromCAM(CV_CAP_ANY);
+		cvCaptureFromCAM(CAM_TO_USE);
 	}
 	psmove_set_leds(controller, BCr, BCg, BCb);
 	psmove_update_leds(controller);
@@ -457,7 +464,7 @@ int adaptToLighting(int lumMin, int expMin, int expMax) {
 	int exp = expMin;
 	cvhSetCameraParameters(0, 0, 0, exp, 0, 0xff, 0xff, 0xff);
 
-	CvCapture* capture = cvCaptureFromCAM(CV_CAP_ANY);
+	CvCapture* capture = cvCaptureFromCAM(CAM_TO_USE);
 
 	if (!capture) {
 		fprintf(stderr, "ERROR: capture is NULL \n");
@@ -507,7 +514,7 @@ int adaptToLighting(int lumMin, int expMin, int expMax) {
 				// reconfigure the camera!
 				cvhSetCameraParameters(0, 0, 0, exp, 0, 0xff, 0xff, 0xff);
 				cvReleaseCapture(&capture);
-				capture = cvCaptureFromCAM(CV_CAP_ANY);
+				capture = cvCaptureFromCAM(CAM_TO_USE);
 				usleep(10000);
 				counter = 0;
 				lastExp = exp;
@@ -528,7 +535,7 @@ void autoWB() {
 
 	cvhSetCameraParameters(0, 0, 0, exp, gain, 0xff, 0xff, 0xff);
 
-	CvCapture* capture = cvCaptureFromCAM(CV_CAP_ANY);
+	CvCapture* capture = cvCaptureFromCAM(CAM_TO_USE);
 
 	if (!capture) {
 		fprintf(stderr, "ERROR: capture is NULL \n");
@@ -599,7 +606,7 @@ void autoWB() {
 			GATE = 0;
 			cvhSetCameraParameters(0, 0, 0, exp, gain, 0xff, 0xff, 0xff);
 			cvReleaseCapture(&capture);
-			capture = cvCaptureFromCAM(CV_CAP_ANY);
+			capture = cvCaptureFromCAM(CAM_TO_USE);
 			usleep(10000);
 			GATE = 1;
 		}
@@ -631,7 +638,7 @@ void diff() {
 
 void videoGuess() {
 	cvNamedWindow("videoGuess", 1);
-	CvCapture* capture = cvCaptureFromCAM(CV_CAP_ANY);
+	CvCapture* capture = cvCaptureFromCAM(CAM_TO_USE);
 
 	if (!capture) {
 		fprintf(stderr, "ERROR: capture is NULL \n");
@@ -679,7 +686,7 @@ void videoGuess() {
 
 void videoHist() {
 
-	CvCapture* capture = cvCaptureFromCAM(CV_CAP_ANY);
+	CvCapture* capture = cvCaptureFromCAM(CAM_TO_USE);
 
 	if (!capture) {
 		fprintf(stderr, "ERROR: capture is NULL \n");

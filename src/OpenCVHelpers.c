@@ -1,5 +1,9 @@
 #include <stdio.h>
-#include <windows.h>
+
+#ifdef WIN32
+#    include <windows.h>
+#endif
+
 #include <unistd.h>
 #include "opencv2/imgproc/imgproc_c.h"
 #include "opencv2/highgui/highgui_c.h"
@@ -184,25 +188,6 @@ CvScalar cvhHsv2RgbALT(float hue) {
 	return cvScalar(rgb[2], rgb[1], rgb[0], 0);
 }
 
-void cvhDebug(const char* msg) {
-#ifdef DEBUG_OUT
-	printf(msg);
-#endif
-}
-
-int autoIdx = 0;
-char autoMsg[128];
-void cvhAutoDebug() {
-#ifdef DEBUG_OUT
-	sprintf(autoMsg, "auto debug (%d)\n", autoIdx++);
-	printf(autoMsg);
-#endif
-}
-
-void cvhAutoDebugReset() {
-	autoIdx = 0;
-}
-
 int cvhMoveButton(PSMove* move, int button) {
 	int pressed;
 
@@ -301,6 +286,7 @@ int fileExists(const char* file) {
 
 void cvhSetCameraParameters(int AutoAEC, int AutoAGC, int AutoAWB, int Exposure,
 		int Gain, int WhiteBalanceB, int WhiteBalanceG, int WhiteBalanceR) {
+#ifdef WIN32
 	HKEY hKey;
 	DWORD l = sizeof(DWORD);
 	char* PATH = "Software\\PS3EyeCamera\\Settings";
@@ -346,9 +332,11 @@ void cvhSetCameraParameters(int AutoAEC, int AutoAGC, int AutoAWB, int Exposure,
 	if (WhiteBalanceR >= 0)
 		RegSetValueExA(hKey, "WhiteBalanceR", 0, REG_DWORD,
 				(CONST BYTE*) &dWhiteBalanceR, l);
+#endif
 }
 
 void cvhBackupCameraSettings() {
+#ifdef WIN32
 	HKEY hKey;
 	DWORD l = sizeof(DWORD);
 	DWORD AutoAEC = 0;
@@ -395,9 +383,11 @@ void cvhBackupCameraSettings() {
 		RegSetValueExA(hKey, "X_WhiteBalanceR", 0, REG_DWORD,
 				(CONST BYTE*) &wbR, l);
 	}
+#endif
 }
 
 void cvhRestoreCameraSettings() {
+#ifdef WIN32
 	HKEY hKey;
 	DWORD l = sizeof(DWORD);
 
@@ -477,5 +467,6 @@ void cvhRestoreCameraSettings() {
 		RegDeleteValueA(hKey, "X_WhiteBalanceG");
 		RegDeleteValueA(hKey, "X_WhiteBalanceR");
 	}
+#endif
 }
 
