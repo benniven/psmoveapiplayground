@@ -11,13 +11,12 @@
 struct _HPTimer;
 typedef struct _HPTimer HPTimer;
 
-HPTimer* createTimer(); // start timer
-void releaseTimer(HPTimer* t); // start timer
-void startTimer(HPTimer* t); // start timer
-void stopTimer(HPTimer* t); // stop the timer
-double getElapsedTime(HPTimer* t); // get elapsed time in second
-double getElapsedTimeInSec(HPTimer* t); // get elapsed time in second (same as getElapsedTime)
-double getElapsedTimeInMilliSec(HPTimer* t); // get elapsed time in milli-second
-double getElapsedTimeInMicroSec(HPTimer* t); // get elapsed time in micro-second
+HPTimer* hp_timer_create(); // constructor, creates internal data structures of the timer
+void hp_timer_release(HPTimer* t); // start timer
+void hp_timer_start(HPTimer* t); // start timer
+void hp_timer_stop(HPTimer* t); // stop the timer
+double hp_timer_get_seconds(HPTimer* t); // get elapsed time in second
+double hp_timer_get_millis(HPTimer* t); // get elapsed time in milli-second
+double hp_timer_get_micros(HPTimer* t); // get elapsed time in micro-second
 
 #endif // HIGH_PRECISION_TIMER_H_DEF

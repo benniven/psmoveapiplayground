@@ -1,22 +1,19 @@
 #include <stdio.h>
-
 #ifdef WIN32
 #    include <windows.h>
 #endif
-
 #include <unistd.h>
 #include "opencv2/imgproc/imgproc_c.h"
 #include "opencv2/highgui/highgui_c.h"
 #include "opencv2/core/core_c.h"
+#include "tracker_helpers.h"
 
-#include "OpenCVHelpers.h"
-
-double cvhVar(double* src, int len) {
+double th_var(double* src, int len) {
 	double f = 1.0 / (len - 1);
 	int i;
 	double sum = 0;
 	double d = 0;
-	double avg = cvhAvg(src, len);
+	double avg = th_avg(src, len);
 	for (i = 0; i < len; i++) {
 		d = src[i] - avg;
 		sum = sum + d * d;
@@ -24,7 +21,7 @@ double cvhVar(double* src, int len) {
 	return sum * f;
 }
 
-double cvhAvg(double* src, int len) {
+double th_avg(double* src, int len) {
 	double sum = 0;
 	int i = 0;
 	for (i = 0; i < len; i++)
@@ -32,7 +29,7 @@ double cvhAvg(double* src, int len) {
 	return sum / len;
 }
 
-double cvhMagnitude(double* src, int len) {
+double th_magnitude(double* src, int len) {
 	double sum = 0;
 	int i;
 	for (i = 0; i < len; i++)
@@ -41,18 +38,18 @@ double cvhMagnitude(double* src, int len) {
 	return sqrt(sum);
 }
 
-void cvhMinus(double* l, double* r, double* result, int len) {
+void th_minus(double* l, double* r, double* result, int len) {
 	int i;
 	for (i = 0; i < len; i++)
 		result[i] = l[i] - r[i];
 }
-void cvhPlus(double* l, double* r, double* result, int len) {
+void th_plus(double* l, double* r, double* result, int len) {
 	int i;
 	for (i = 0; i < len; i++)
 		result[i] = l[i] + r[i];
 }
 
-int cvhCreateImage(IplImage** img, CvSize s, int depth, int channels) {
+int th_create_image(IplImage** img, CvSize s, int depth, int channels) {
 	int R = 0;
 	IplImage* src = *img;
 	if (src == 0x0 || src->depth != depth || src->width != s.width
@@ -66,7 +63,7 @@ int cvhCreateImage(IplImage** img, CvSize s, int depth, int channels) {
 	}
 	return R;
 }
-int cvhCreateHist(CvHistogram** hist, int dims, int* sizes, int type,
+int th_create_hist(CvHistogram** hist, int dims, int* sizes, int type,
 		float** ranges, int uniform) {
 	int R = 0;
 	CvHistogram* src = *hist;
@@ -81,7 +78,7 @@ int cvhCreateHist(CvHistogram** hist, int dims, int* sizes, int type,
 	return R;
 }
 
-int cvhCreateMemStorage(CvMemStorage** stor, int block_size) {
+int th_create_mem_storage(CvMemStorage** stor, int block_size) {
 	int R = 0;
 	CvMemStorage* src = *stor;
 	if (src == 0x0 || src->block_size != block_size) {
@@ -95,7 +92,7 @@ int cvhCreateMemStorage(CvMemStorage** stor, int block_size) {
 	return R;
 }
 
-void cvhPutText(IplImage* img, const char* text, CvPoint p, CvScalar color) {
+void th_put_text(IplImage* img, const char* text, CvPoint p, CvScalar color) {
 	CvFont font;
 	double hScale = 0.5;
 	double vScale = 0.5;
@@ -106,12 +103,12 @@ void cvhPutText(IplImage* img, const char* text, CvPoint p, CvScalar color) {
 }
 
 IplImage* histImg;
-IplImage* cvhPlotHistogram(CvHistogram* hist, int bins, const char* windowName,
+IplImage* th_plot_hist(CvHistogram* hist, int bins, const char* windowName,
 		CvScalar lineColor) {
-	cvhCreateImage(&histImg, cvSize(512, 512 * 0.6), 8, 3);
+	th_create_image(&histImg, cvSize(512, 512 * 0.6), 8, 3);
 	float xStep = histImg->width / bins;
 	CvPoint p0, p1;
-	cvSet(histImg, cvhBlack, 0x0);
+	cvSet(histImg, th_black, 0x0);
 
 	float max_value = 0;
 	cvGetMinMaxHistValue(hist, 0, &max_value, 0, 0);
@@ -130,12 +127,12 @@ IplImage* cvhPlotHistogram(CvHistogram* hist, int bins, const char* windowName,
 	return histImg;
 }
 
-int cvhSaveJPEG(const char* path, const CvArr* image, int quality) {
+int th_save_jpg(const char* path, const CvArr* image, int quality) {
 	int imgParams[] = { CV_IMWRITE_JPEG_QUALITY, quality, 0 };
 	return cvSaveImage(path, image, imgParams);
 }
 
-void cvhPrintArray(double* src, int len) {
+void th_print_array(double* src, int len) {
 	int i;
 	printf("%s", "{");
 	if (len > 0)
@@ -147,7 +144,7 @@ void cvhPrintArray(double* src, int len) {
 
 IplImage* pxHSV;
 IplImage* pxBGR;
-CvScalar cvhHSV2BGR(CvScalar hsv) {
+CvScalar th_hsv2bgr(CvScalar hsv) {
 	if (pxHSV == 0x0) {
 		pxHSV = cvCreateImage(cvSize(1, 1), IPL_DEPTH_8U, 3);
 		pxBGR = cvCloneImage(pxHSV);
@@ -158,7 +155,7 @@ CvScalar cvhHSV2BGR(CvScalar hsv) {
 	return cvAvg(pxBGR, 0x0);
 
 }
-CvScalar cvhBGR2HSV(CvScalar bgr) {
+CvScalar th_brg2hsv(CvScalar bgr) {
 	if (pxHSV == 0x0) {
 		pxHSV = cvCreateImage(cvSize(1, 1), IPL_DEPTH_8U, 3);
 		pxBGR = cvCloneImage(pxHSV);
@@ -168,7 +165,7 @@ CvScalar cvhBGR2HSV(CvScalar bgr) {
 	return cvAvg(pxHSV, 0x0);
 }
 
-CvScalar cvhHsv2RgbALT(float hue) {
+CvScalar th_hsv2bgr_alt(float hue) {
 	int rgb[3], p, sector;
 	while ((hue >= 180))
 		hue = hue - 180;
@@ -188,7 +185,7 @@ CvScalar cvhHsv2RgbALT(float hue) {
 	return cvScalar(rgb[2], rgb[1], rgb[0], 0);
 }
 
-int cvhMoveButton(PSMove* move, int button) {
+int th_move_button(PSMove* move, int button) {
 	int pressed;
 
 	psmove_poll(move);
@@ -196,7 +193,7 @@ int cvhMoveButton(PSMove* move, int button) {
 	return pressed & button;
 
 }
-void cvhWaitMoveButton(PSMove* move, int button) {
+void th_wait_move_button(PSMove* move, int button) {
 	int pressed;
 	while (1) {
 		psmove_poll(move);
@@ -207,7 +204,7 @@ void cvhWaitMoveButton(PSMove* move, int button) {
 	}
 }
 
-void cvhWaitForESC() {
+void th_wait_esc() {
 	while (1) {
 		//If ESC key pressed
 		if ((cvWaitKey(10) & 255) == 27)
@@ -215,7 +212,7 @@ void cvhWaitForESC() {
 	}
 }
 
-void cvhWaitForChar(char c) {
+void th_wait(char c) {
 	while (1) {
 		//If ESC key pressed
 		if ((cvWaitKey(10) & 255) == c)
@@ -223,41 +220,29 @@ void cvhWaitForChar(char c) {
 	}
 }
 
-IplImage* cvhQueryImage(CvCapture* cap) {
+IplImage* th_query_frame(CvCapture* cap) {
 	IplImage* frame = cvQueryFrame(cap);
 	frame = cvQueryFrame(cap);
 	return frame;
 }
 
-IplImage* ch0;
-IplImage* ch1;
-IplImage* ch2;
-IplImage* ch3;
-
-IplImage* cvhQueryEqualizedImage(CvCapture* cap) {
-	IplImage* frame = cvhQueryImage(cap);
-
-	cvhEqualizeImage(frame);
-
-	return frame;
-}
-
-void cvhEqualizeImage(IplImage* img)
-{
+IplImage* ch0 = 0x0;
+IplImage* ch1 = 0x0;
+IplImage* ch2 = 0x0;
+void th_equalize_image(IplImage* img) {
 	//return frame;
-		cvhCreateImage(&ch0, cvGetSize(img), img->depth, 1);
-		cvhCreateImage(&ch1, cvGetSize(img), img->depth, 1);
-		cvhCreateImage(&ch2, cvGetSize(img), img->depth, 1);
-		cvhCreateImage(&ch3, cvGetSize(img), img->depth, 1);
+	th_create_image(&ch0, cvGetSize(img), img->depth, 1);
+	th_create_image(&ch1, cvGetSize(img), img->depth, 1);
+	th_create_image(&ch2, cvGetSize(img), img->depth, 1);
 
-		cvSplit(img, ch0, ch1, ch2, 0x0);
-		cvEqualizeHist(ch0, ch0);
-		cvEqualizeHist(ch1, ch1);
-		cvEqualizeHist(ch2, ch2);
-		cvMerge(ch0, ch1, ch2, 0x0, img);
+	cvSplit(img, ch0, ch1, ch2, 0x0);
+	cvEqualizeHist(ch0, ch0);
+	cvEqualizeHist(ch1, ch1);
+	cvEqualizeHist(ch2, ch2);
+	cvMerge(ch0, ch1, ch2, 0x0, img);
 }
 
-int fileExists(const char* file) {
+int th_file_exists(const char* file) {
 	FILE *fp = fopen(file, "r");
 	int ret = fp != 0x0;
 	if (fp)
@@ -284,7 +269,7 @@ int fileExists(const char* file) {
 #define regWBG_B	"X_WhiteBalanceG"
 #define regWBR_B	"X_WhiteBalanceR"
 
-void cvhSetCameraParameters(int AutoAEC, int AutoAGC, int AutoAWB, int Exposure,
+void th_set_camera_params(int AutoAEC, int AutoAGC, int AutoAWB, int Exposure,
 		int Gain, int WhiteBalanceB, int WhiteBalanceG, int WhiteBalanceR) {
 #ifdef WIN32
 	HKEY hKey;
@@ -335,7 +320,7 @@ void cvhSetCameraParameters(int AutoAEC, int AutoAGC, int AutoAWB, int Exposure,
 #endif
 }
 
-void cvhBackupCameraSettings() {
+void th_backup_camera_params() {
 #ifdef WIN32
 	HKEY hKey;
 	DWORD l = sizeof(DWORD);
@@ -386,7 +371,7 @@ void cvhBackupCameraSettings() {
 #endif
 }
 
-void cvhRestoreCameraSettings() {
+void th_restore_camera_params() {
 #ifdef WIN32
 	HKEY hKey;
 	DWORD l = sizeof(DWORD);

@@ -3,7 +3,7 @@
 #include "opencv2/imgproc/imgproc_c.h"
 
 #include "OpenCVMoveAPI.h"
-#include "OpenCVHelpers.h"
+#include "tracker_helpers.h"
 
 CvScalar findMoveColorP(char* b1, char* b2, int min_radius, int max_radius) {
 	IplImage* img1 = cvLoadImage(b1, 1);
@@ -29,13 +29,13 @@ CvScalar findMoveColor(IplImage* img1, IplImage* img2, int min_radius,
 	// res: [RESULT] the average color of the sphere
 	// HINT: it doesn't mater in which image the sphere is lit
 
-	cvhCreateImage(&fmc_g1, cvGetSize(img1), img1->depth, 1);
-	cvhCreateImage(&fmc_g2, cvGetSize(img1), img1->depth, 1);
-	cvhCreateImage(&fmc_mask, cvGetSize(img1), img1->depth, 1);
-	cvhCreateImage(&fmc_maskD, cvGetSize(img1), img1->depth, 1);
+	th_create_image(&fmc_g1, cvGetSize(img1), img1->depth, 1);
+	th_create_image(&fmc_g2, cvGetSize(img1), img1->depth, 1);
+	th_create_image(&fmc_mask, cvGetSize(img1), img1->depth, 1);
+	th_create_image(&fmc_maskD, cvGetSize(img1), img1->depth, 1);
 
-	cvhCreateImage(&fmc_hsv1, cvGetSize(img1), img1->depth, img1->nChannels);
-	cvhCreateImage(&fmc_hsv2, cvGetSize(img1), img1->depth, img1->nChannels);
+	th_create_image(&fmc_hsv1, cvGetSize(img1), img1->depth, img1->nChannels);
+	th_create_image(&fmc_hsv2, cvGetSize(img1), img1->depth, img1->nChannels);
 
 	cvCvtColor(img1, fmc_hsv1, CV_BGR2HSV);
 	cvCvtColor(img2, fmc_hsv2, CV_BGR2HSV);
@@ -50,7 +50,7 @@ CvScalar findMoveColor(IplImage* img1, IplImage* img2, int min_radius,
 	 */
 
 	CvScalar col = CV_RGB(0xec, 0xae, 0x62);
-	CvScalar hc = cvhBGR2HSV(col);
+	CvScalar hc = th_brg2hsv(col);
 	// find a single circle within at least one of these pictures
 	CvScalar min = cvScalar(hc.val[0] - 15, hc.val[1] - 55, hc.val[2] - 35, 0);
 	CvScalar max = cvScalar(hc.val[0] + 15, hc.val[1] + 55, hc.val[2] + 35, 0);
@@ -94,15 +94,13 @@ CvScalar findMoveColor(IplImage* img1, IplImage* img2, int min_radius,
 	//scvShowImage("in range (single)", fmc_mask);
 	//cvShowImage("g1", fmc_g1);
 	//cvShowImage("g2", fmc_g2);
-
 	//cvCvtColor(img1, fmc_g1, CV_BGR2GRAY);
 	//cvCvtColor(img2, fmc_g2, CV_BGR2GRAY);
 	//cvAbsDiff(fmc_g1, fmc_g2, fmc_mask);
 	//return res;
-
-	cvhCreateMemStorage(&fmc_Storage, 0);
-	CvSeq* results = cvHoughCircles(fmc_mask, fmc_Storage, CV_HOUGH_GRADIENT,
-			2, fmc_mask->width / 10, 100, 100, min_radius, max_radius);
+	th_create_mem_storage(&fmc_Storage, 0);
+	CvSeq* results = cvHoughCircles(fmc_mask, fmc_Storage, CV_HOUGH_GRADIENT, 2,
+			fmc_mask->width / 10, 100, 100, min_radius, max_radius);
 
 	// clear the mask
 	int i;
@@ -111,8 +109,8 @@ CvScalar findMoveColor(IplImage* img1, IplImage* img2, int min_radius,
 		cvZero(fmc_mask);
 		float* p = (float*) cvGetSeqElem(results, i);
 		CvPoint pt = cvPoint(cvRound(p[0]), cvRound(p[1]));
-		cvCircle(fmc_mask, pt, cvRound(p[2]), CV_RGB(0xff,0xff,0xff),
-				CV_FILLED, 8, 0);
+		cvCircle(fmc_mask, pt, cvRound(p[2]), CV_RGB(0xff,0xff,0xff), CV_FILLED,
+				8, 0);
 
 		// Average color of the sphere in image 1
 		CvScalar lit = cvAvg(img1, fmc_mask);
@@ -120,14 +118,19 @@ CvScalar findMoveColor(IplImage* img1, IplImage* img2, int min_radius,
 		CvScalar off = cvAvg(img2, fmc_mask);
 
 		// it is most likely, that the color with the bigger variance is the color of the lit sphere
-		if (cvhVar(&off, 3) > cvhVar(&lit, 3)) {
+		if (th_var(off.val, 3) > th_var(lit.val, 3)) {
 			CvScalar tmp = lit;
 			lit = off;
 			off = tmp;
 		}
 		if (i == 0) {
-			cvhPrintScalar("sphere off: ", off, "\n");
-			cvhPrintScalar("sphere lit: ", lit, "\n");
+			printf("%s", "sphere off:");
+			th_print_array(off.val, 3);
+			printf("%s", "\n");
+
+			printf("%s", "sphere lit:");
+			th_print_array(lit.val, 3);
+			printf("%s", "\n");
 			res = lit;
 		}
 	}
@@ -142,11 +145,11 @@ CvScalar trackPSMOVE_____(IplImage* img1, IplImage* img2, int min_radius,
 	// img2: the sphere may be off
 	// res: [RESULT] the average color of the sphere
 	// HINT: it doesn't mater in which image the sphere is lit
-	cvhCreateImage(&fmc_g1, cvGetSize(img1), img1->depth, 1);
-	cvhCreateImage(&fmc_g2, cvGetSize(img2), img1->depth, 1);
-	cvhCreateImage(&fmc_mask, cvGetSize(img1), img1->depth, 1);
+	th_create_image(&fmc_g1, cvGetSize(img1), img1->depth, 1);
+	th_create_image(&fmc_g2, cvGetSize(img2), img1->depth, 1);
+	th_create_image(&fmc_mask, cvGetSize(img1), img1->depth, 1);
 
-	cvhCreateImage(&fmc_hsv1, cvGetSize(img1), img1->depth, img1->nChannels);
+	th_create_image(&fmc_hsv1, cvGetSize(img1), img1->depth, img1->nChannels);
 	//cvhCreateImage(&fmc_hsv2, cvGetSize(img1), img1->depth, img1->nChannels);
 
 	cvCvtColor(img1, fmc_hsv1, CV_BGR2HSV);
@@ -190,9 +193,9 @@ CvScalar trackPSMOVE_____(IplImage* img1, IplImage* img2, int min_radius,
 	//cvAbsDiff(fmc_g1, fmc_g2, fmc_mask);
 	//return res;
 
-	cvhCreateMemStorage(&fmc_Storage, 0);
-	CvSeq* results = cvHoughCircles(fmc_mask, fmc_Storage, CV_HOUGH_GRADIENT,
-			2, fmc_mask->width / 10, 100, 100, min_radius, max_radius);
+	th_create_mem_storage(&fmc_Storage, 0);
+	CvSeq* results = cvHoughCircles(fmc_mask, fmc_Storage, CV_HOUGH_GRADIENT, 2,
+			fmc_mask->width / 10, 100, 100, min_radius, max_radius);
 
 	// clear the mask
 	int i;
@@ -200,8 +203,8 @@ CvScalar trackPSMOVE_____(IplImage* img1, IplImage* img2, int min_radius,
 		//cvZero(fmc_mask);
 		float* p = (float*) cvGetSeqElem(results, i);
 		CvPoint pt = cvPoint(cvRound(p[0]), cvRound(p[1]));
-		cvCircle(fmc_mask, pt, cvRound(p[2]), CV_RGB(0xff,0xff,0xff),
-				CV_FILLED, 8, 0);
+		cvCircle(fmc_mask, pt, cvRound(p[2]), CV_RGB(0xff,0xff,0xff), CV_FILLED,
+				8, 0);
 
 		// Average color of the sphere in image 1
 		CvScalar lit = cvAvg(img1, fmc_mask);
@@ -209,14 +212,16 @@ CvScalar trackPSMOVE_____(IplImage* img1, IplImage* img2, int min_radius,
 		CvScalar off = cvAvg(img2, fmc_mask);
 
 		// it is most likely, that the color with the bigger variance is the color of the lit sphere
-		if (cvhVar(&off, 3) > cvhVar(&lit, 3)) {
+		if (th_var(off.val, 3) > th_var(lit.val, 3)) {
 			CvScalar tmp = lit;
 			lit = off;
 			off = tmp;
 		}
 		if (i == 0) {
-			printf("%s","sphere off");cvhPrintArray(off.val,3);
-			printf("%s","sphere lit");cvhPrintArray(lit.val,3);
+			printf("%s", "sphere off");
+			th_print_array(off.val, 3);
+			printf("%s", "sphere lit");
+			th_print_array(lit.val, 3);
 			res = lit;
 		}
 		break;
@@ -248,11 +253,11 @@ IplImage* ah_plane;
 CvHistogram* ahist;
 IplImage* ahist_img;
 
-void findOptimalMoveColors(IplImage* img, int h_bins, int kSize,
-		CvScalar dst[], int num) {
+void findOptimalMoveColors(IplImage* img, int h_bins, int kSize, CvScalar dst[],
+		int num) {
 	// Compute HSV image and separate into colors
-	cvhCreateImage(&ahsv, cvGetSize(img), img->depth, 3);
-	cvhCreateImage(&ah_plane, cvGetSize(img), 8, 1);
+	th_create_image(&ahsv, cvGetSize(img), img->depth, 3);
+	th_create_image(&ah_plane, cvGetSize(img), 8, 1);
 	cvCvtColor(img, ahsv, CV_BGR2HSV);
 	cvSplit(ahsv, ah_plane, 0, 0, 0);
 	// Build and fill the histogram
@@ -260,13 +265,13 @@ void findOptimalMoveColors(IplImage* img, int h_bins, int kSize,
 	int hist_size[] = { h_bins };
 	float h_ranges[] = { 0, 180 };
 	float* ranges[] = { h_ranges };
-	cvhCreateHist(&ahist, 1, hist_size, CV_HIST_ARRAY, ranges, 1);
+	th_create_hist(&ahist, 1, hist_size, CV_HIST_ARRAY, ranges, 1);
 	cvCalcHist(planes, ahist, 0, 0); // Compute histogram
 	cvNormalizeHist(ahist, 1.0); // Normalize it
 
 	// Create an image to visualize the histogram
 	int scale = 10;
-	cvhCreateImage(&ahist_img, cvSize(h_bins * scale, 8 * scale), 8, 3);
+	th_create_image(&ahist_img, cvSize(h_bins * scale, 8 * scale), 8, 3);
 
 	cvZero(ahist_img);
 	// populate the visualization
@@ -332,7 +337,7 @@ void findOptimalMoveColors(IplImage* img, int h_bins, int kSize,
 		// save the next best suitable color
 		bestHueIdxs[i] = histIdx;
 		if (histIdx != -1) {
-			dst[i] = cvhHSV2BGR(cvScalar(histIdx * 180 / h_bins, 255, 255, 0));
+			dst[i] = th_hsv2bgr(cvScalar(histIdx * 180 / h_bins, 255, 255, 0));
 			dst[i].val[3] = minProb;
 		} else
 			printf("Unable to find color: %d!\n", i);
@@ -340,7 +345,7 @@ void findOptimalMoveColors(IplImage* img, int h_bins, int kSize,
 
 	// draw histogram colors
 	for (h = 0; h < h_bins; h++) {
-		col = cvhHSV2BGR(cvScalar(h * 180 / h_bins, 255, 255, 0));
+		col = th_hsv2bgr(cvScalar(h * 180 / h_bins, 255, 255, 0));
 		p1 = cvPoint(h * scale, ahist_img->height / 2);
 		p2 = cvPoint((h + 1) * scale - 1, ahist_img->height - 1);
 		cvRectangle(ahist_img, p1, p2, col, CV_FILLED, 8, 0);

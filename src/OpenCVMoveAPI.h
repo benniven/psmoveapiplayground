@@ -1,5 +1,4 @@
 #include "opencv2/core/core_c.h"
-#include "MoveAPIOptions.h"
 
 #ifndef OPEN_CV_MOVE_API_H
 #define OPEN_CV_MOVE_API_H

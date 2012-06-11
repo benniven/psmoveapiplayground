@@ -10,9 +10,9 @@
 #include "opencv2/highgui/highgui_c.h"
 #include "opencv2/imgproc/imgproc_c.h"
 
-#include "OpenCVHelpers.h"
+#include "tracker_helpers.h"
 #include "OpenCVMoveAPI.h"
-#include "HighPrecisionTimer.h"
+#include "high_precision_timer.h"
 
 #include "psmove.h"
 
@@ -20,12 +20,10 @@
 #define CAM_TO_USE 1
 
 void calibrate();
-void getDiff(CvCapture** capture, PSMove* controller, int exp, IplImage* on,
-		IplImage* diff);
+void tracker_get_diff(CvCapture** capture, PSMove* controller, int exp,
+		IplImage* on, IplImage* diff);
 
 void videoHist();
-void videoGuess();
-void diff();
 int adaptToLighting(int lumMin, int expMin, int expMax);
 void autoWB();
 PSMove* connectController();
@@ -35,18 +33,15 @@ int BCg;
 int BCb;
 
 int main(int arg, char** args) {
-	//cvhBackupCLDriverRegistry();
 	calibrate();
-	//autoWB();
-	//diff();
-	//videoHist();
-	//videoGuess();
+	// autoWB();
+	// videoHist();
 	return 0;
 }
 
 void calibrate() {
 	PSMove* controller = connectController();
-	HPTimer* timer = createTimer();
+	HPTimer* timer = hp_timer_create();
 	int exp = adaptToLighting(25, 0x10, 0x40);
 	float f = 1;
 
@@ -59,7 +54,7 @@ void calibrate() {
 	BCg = 0x00 * f;
 	BCb = 0xFF * f;
 
-	cvhSetCameraParameters(0, 0, 0, exp, 0, 0xff, 0xff, 0xff);
+	th_set_camera_params(0, 0, 0, exp, 0, 0xff, 0xff, 0xff);
 	CvCapture* capture = cvCaptureFromCAM(CAM_TO_USE);
 	CvMemStorage* storage = cvCreateMemStorage(0);
 	if (!capture) {
@@ -73,6 +68,8 @@ void calibrate() {
 	IplImage* images[blinks];
 	IplImage* diffs[blinks];
 	double sizes[blinks];
+	IplConvKernel* cK = cvCreateStructuringElementEx(11, 11, 6, 6,
+			CV_SHAPE_RECT, 0x0);
 	IplImage* frame = cvQueryFrame(capture);
 	IplImage* mask = cvCreateImage(cvGetSize(frame), frame->depth, 1);
 	IplImage* hsvFrame = cvCreateImage(cvGetSize(frame), frame->depth,
@@ -92,56 +89,33 @@ void calibrate() {
 		// wait until the user presses a controller button
 		//cvhWaitMoveButton(controller, Btn_T);
 		for (i = 0; i < blinks; i++) {
-			getDiff(&capture, controller, -1, images[i], diffs[i]);
+			tracker_get_diff(&capture, controller, -1, images[i], diffs[i]);
 
-			//sprintf(fpss, "%d.diff-raw.jpg", (int) images[i]);
-			//cvhSaveJPEG(fpss, diffs[i], 100);
-			//cvShowImage("raw diff", diffs[i]);
-			// TODO: ist das eine gute schwelle?
 			cvThreshold(diffs[i], diffs[i], 20, 0xFF, CV_THRESH_BINARY);
 
-			cvErode(diffs[i], diffs[i], 0x0, 1);
-			cvDilate(diffs[i], diffs[i], 0x0, 1);
-
-			//sprintf(fpss, "%d.diff-th.jpg", (int) images[i]);
-			//cvhSaveJPEG(fpss, diffs[i], 100);
-
-			//cvShowImage("thresholded diff", diffs[i]);
-			//cvShowImage("original image", images[i]);
-			//cvhWaitForESC();
+			cvErode(diffs[i], diffs[i], cK, 1);
+			cvDilate(diffs[i], diffs[i], cK, 1);
 		}
 		// put the diff images together!
 		for (i = 1; i < blinks; i++) {
 			cvAnd(diffs[0], diffs[i], diffs[0], 0x0);
 		}
-		//cvErode(diffs[0], diffs[0], 0x0, 1);
-		//cvDilate(diffs[0], diffs[0], 0x0, 1);
-		//cvShowImage("diff-final", diffs[0]);
-		//cvhWaitForESC();
-
-		//sprintf(fpss, "diff-final.jpg");
-		//cvhSaveJPEG(fpss, diffs[0], 100);
 
 		// calculate the avg color!
 		c = cvAvg(images[blinks - 1], diffs[0]);
 		ic = cvScalar(0xff - c.val[0], 0xff - c.val[1], 0xff - c.val[1], 0);
-		hc = cvhBGR2HSV(c);
+		hc = th_brg2hsv(c);
 		// find a single contour with that color within the calibration pictures
-		cvhMinus(hc.val, r.val, min.val, 3);
-		cvhPlus(hc.val, r.val, max.val, 3);
+		th_minus(hc.val, r.val, min.val, 3);
+		th_plus(hc.val, r.val, max.val, 3);
 		for (i = 0; i < blinks; i++) {
 			cvCvtColor(images[i], hsvFrame, CV_BGR2HSV);
 			cvInRangeS(hsvFrame, min, max, mask);
 
-			//cvShowImage("raw image", mask);
 			cvErode(mask, mask, 0x0, 1);
 			cvDilate(mask, mask, 0x0, 1);
 
 			CvSeq* contour;
-			//cvShowImage("filtered image", mask);
-			//cvShowImage("original image", images[i]);
-			//cvhWaitForESC();
-
 			cvFindContours(mask, storage, &contour, sizeof(CvContour),
 					CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE, cvPoint(0, 0));
 
@@ -150,8 +124,8 @@ void calibrate() {
 			if (contour != 0x0)
 				sizes[i] = cvContourArea(contour, CV_WHOLE_SEQ, 0);
 
-			if (contour == 0x0 || contour->h_next != 0x0 || contour->h_prev
-					!= 0x0 || sizes[i] <= 100) {
+			if (contour == 0x0 || contour->h_next != 0x0
+					|| contour->h_prev != 0x0 || sizes[i] <= 100) {
 				if (contour == 0x0)
 					printf("%s\n", "no contours!");
 				else if (contour->h_next != 0x0 || contour->h_prev != 0x0)
@@ -163,13 +137,9 @@ void calibrate() {
 		}
 
 		// check if the size of the found contours are near to each other
-		// and if there were found contours at al :P
-		double stdSizes = sqrt(cvhVar(sizes, blinks));
-		cvhPrintArray(sizes, blinks);
-		//printf("V: %.0f\n", stdSizes);
-		//printf("%s", "C: ");
-		//cvhPrintArray(c.val, 3);
-		if (stdSizes < (cvhAvg(sizes, blinks) * 0.10) && sizes[0] > 0.0)
+		// and if there were found contours at all
+		double stdSizes = sqrt(th_var(sizes, blinks));
+		if (stdSizes < (th_avg(sizes, blinks) * 0.10) && sizes[0] > 0.0)
 			break;
 	}
 
@@ -190,25 +160,21 @@ void calibrate() {
 		roiM[i] = cvCreateImage(cvSize(w * 0.6, w * 0.6), z->depth, 1);
 	}
 
-	cvhMinus(hc.val, r.val, min.val, 3);
-	cvhPlus(hc.val, r.val, max.val, 3);
+	th_minus(hc.val, r.val, min.val, 3);
+	th_plus(hc.val, r.val, max.val, 3);
 	float avgLum = 0;
 	CvScalar avgC;
 	// this seems to be a nice color
 	while (1) {
 		int key = (cvWaitKey(10) & 255);
-		frame = cvhQueryImage(capture);
+		frame = th_query_frame(capture);
 
-		//frame = cvhQueryEqualizedImage(capture);
-		avgC = cvAvg(frame, 0x0);
-		avgLum = cvhAvg(avgC.val, 3);
-		//cvSubS(frame, wb, frame, 0x0);
 		if (!frame)
 			continue;
 		CvPoint p;
 
 		// this is the tracking algo
-		startTimer(timer);
+		hp_timer_start(timer);
 		while (1) {
 			// cut out the roi!
 			cvSetImageROI(frame, roi);
@@ -243,14 +209,14 @@ void calibrate() {
 							cvScalar(0, 0xff, 0, 0), -1, 1, 8, cvPoint(0, 0));
 				}
 			}
-			cvSet(roiM[0], cvhBlack, 0x0);
-			cvSet(roiM[roiIdx], cvhBlack, 0x0);
+			cvSet(roiM[0], th_black, 0x0);
+			cvSet(roiM[roiIdx], th_black, 0x0);
 			if (best) {
-				cvDrawContours(roiM[roiIdx], best, cvhWhite, cvhWhite, -1,
+				cvDrawContours(roiM[roiIdx], best, th_white, th_white, -1,
 						CV_FILLED, 8, cvPoint(0, 0));
 
-				cvDrawContours(roiM[0], best, cvhWhite, cvhWhite, -1,
-						CV_FILLED, 8, cvPoint(roi.x, roi.y));
+				cvDrawContours(roiM[0], best, th_white, th_white, -1, CV_FILLED,
+						8, cvPoint(roi.x, roi.y));
 
 				CvMoments mu;
 				cvMoments(roiM[roiIdx], &mu, 0);
@@ -260,11 +226,11 @@ void calibrate() {
 
 				// update the feature roi box!
 				br = cvBoundingRect(best, 0);
-				br.width = cvhMAX(br.width, br.height) * 2;
+				br.width = th_max(br.width, br.height) * 2;
 				br.height = br.width;
 				for (i = 0; i < rois; i++) {
-					if (br.width > roiI[i]->width && br.height
-							> roiI[i]->height)
+					if (br.width > roiI[i]->width
+							&& br.height > roiI[i]->height)
 						break;
 					roiIdx = i;
 					roi.width = roiI[i]->width;
@@ -305,41 +271,43 @@ void calibrate() {
 					roi.y = roiI[0]->height - roi.height;
 			}
 		}
-		stopTimer(timer);
+		hp_timer_stop(timer);
 
-		//cvhEqualizeImage(frame);
-		//cvSmooth(frame,frame,CV_GAUSSIAN,3,3,0,0);
-
-		cvRectangle(frame, cvPoint(roi.x, roi.y), cvPoint(roi.x + roi.width,
-				roi.y + roi.height), cvhWhite, 3, 8, 0);
-		cvRectangle(frame, cvPoint(roi.x, roi.y), cvPoint(roi.x + roi.width,
-				roi.y + roi.height), cvhRed, 1, 8, 0);
+		cvRectangle(frame, cvPoint(roi.x, roi.y),
+				cvPoint(roi.x + roi.width, roi.y + roi.height), th_white, 3, 8,
+				0);
+		cvRectangle(frame, cvPoint(roi.x, roi.y),
+				cvPoint(roi.x + roi.width, roi.y + roi.height), th_red, 1, 8,
+				0);
 
 		cvShowImage("mask", roiM[0]);
 
-		fps = 0.85 * fps + 0.15 * (1.0 / getElapsedTime(timer));
+		fps = 0.85 * fps + 0.15 * (1.0 / hp_timer_get_seconds(timer));
 
-		cvRectangle(frame, cvPoint(0, 0), cvPoint(frame->width, 25), cvhBlack,
+		cvRectangle(frame, cvPoint(0, 0), cvPoint(frame->width, 25), th_black,
 				CV_FILLED, 8, 0);
 		sprintf(text, "fps:%.0f", fps);
-		cvhPutText(frame, text, cvPoint(10, 20), c);
+		th_put_text(frame, text, cvPoint(10, 20), c);
 
-		sprintf(text, "RGB:%x,%x,%x", (int)c.val[2], (int)c.val[1], (int)c.val[1]);
-		cvhPutText(frame, text, cvPoint(110, 20), c);
+		sprintf(text, "RGB:%x,%x,%x", (int) c.val[2], (int) c.val[1],
+				(int) c.val[1]);
+		th_put_text(frame, text, cvPoint(110, 20), c);
 
+		avgC = cvAvg(frame, 0x0);
+		avgLum = th_avg(avgC.val, 3);
 		sprintf(text, "avg(lum):%.0f", avgLum);
-		cvhPutText(frame, text, cvPoint(255, 20), c);
+		th_put_text(frame, text, cvPoint(255, 20), c);
 
 		sprintf(text, "exp:%d", exp);
-		cvhPutText(frame, text, cvPoint(400, 20), c);
+		th_put_text(frame, text, cvPoint(400, 20), c);
 
 		sprintf(text, "ROI:%dx%d", roi.width, roi.height);
-		cvhPutText(frame, text, cvPoint(505, 20), c);
+		th_put_text(frame, text, cvPoint(505, 20), c);
 
-		cvCircle(frame, p, 4, cvhBlack, 4, 8, 0);
+		cvCircle(frame, p, 4, th_black, 4, 8, 0);
 		cvCircle(frame, p, 4, ic, 2, 8, 0);
 		cvShowImage("live camera feed", frame);
-		if (cvhMoveButton(controller, Btn_T))
+		if (th_move_button(controller, Btn_T))
 			psmove_set_leds(controller, 0, 0, 0);
 		else
 			psmove_set_leds(controller, BCr, BCg, BCb);
@@ -348,73 +316,44 @@ void calibrate() {
 		if (key == 27)
 			break;
 	}
-	releaseTimer(timer);
+	hp_timer_release(timer);
 	psmove_disconnect(controller);
 	cvReleaseCapture(&capture);
 }
 
-void getDiff(CvCapture** capture, PSMove* controller, int exp, IplImage* on,
-		IplImage* diff) {
+void tracker_get_diff(CvCapture** capture, PSMove* controller, int exp,
+		IplImage* on, IplImage* diff) {
 	int delay = 1000000 / 4;
 	IplImage* frame;
 	if (exp >= 0) {
 		cvReleaseCapture(capture);
-		cvhSetCameraParameters(0, 0, 1, exp, 0, -1, -1, -1);
+		th_set_camera_params(0, 0, 1, exp, 0, -1, -1, -1);
 		usleep(delay);
 		cvCaptureFromCAM(CAM_TO_USE);
 	}
 	psmove_set_leds(controller, BCr, BCg, BCb);
 	psmove_update_leds(controller);
 	usleep(delay);
-	frame = cvhQueryImage(*capture);
+	frame = th_query_frame(*capture);
 	// copy the color picture!
 	cvCopy(frame, on, 0x0);
 
 	psmove_set_leds(controller, 0, 0, 0);
 	psmove_update_leds(controller);
 	usleep(delay);
-	frame = cvhQueryImage(*capture);
+	frame = th_query_frame(*capture);
 
 	IplImage* grey1 = cvCloneImage(diff);
 	IplImage* grey2 = cvCloneImage(diff);
-	IplImage* mask1 = cvCloneImage(diff);
-	IplImage* mask2 = cvCloneImage(diff);
 
 	cvCvtColor(frame, grey1, CV_BGR2GRAY);
 	cvCvtColor(on, grey2, CV_BGR2GRAY);
-	//char text[256];
-	//sprintf(text, "%d.original_ON.jpg", (int) on);
-	//cvhSaveJPEG(text, on, 100);
-	//sprintf(text, "%d.original_OFF.jpg", (int) on);
-	//cvhSaveJPEG(text, frame, 100);
-	/*
-	 // find all white areas
-	 CvScalar u = cvScalarAll(250);
-	 CvScalar l = cvScalarAll(0);
-	 cvInRangeS(grey1, l, u, mask1);
-	 cvInRangeS(grey2, l, u, mask2);
 
-	 // blurr the white areas (aka Korona)
-	 int k = 13;
-	 cvSmooth(mask1, mask1, CV_GAUSSIAN, k, k, 0, 0);
-	 cvSmooth(mask2, mask2, CV_GAUSSIAN, k, k, 0, 0);
-
-	 cvThreshold(mask1, mask1, 254, 0xFF, CV_THRESH_BINARY);
-	 cvThreshold(mask2, mask2, 254, 0xFF, CV_THRESH_BINARY);
-
-	 // remove all white areas(inc. korona) from the target images
-	 cvAnd(grey1, mask1, grey1, 0x0);
-	 cvAnd(grey2, mask1, grey2, 0x0);
-	 cvAnd(grey1, mask2, grey1, 0x0);
-	 cvAnd(grey2, mask2, grey2, 0x0);
-	 */
 	// calculate the diff of these two cleaned up images
 	cvAbsDiff(grey1, grey2, diff);
 
 	cvReleaseImage(&grey1);
 	cvReleaseImage(&grey2);
-	cvReleaseImage(&mask1);
-	cvReleaseImage(&mask2);
 }
 
 PSMove* connectController() {
@@ -429,7 +368,7 @@ PSMove* connectController() {
 
 	if (move == NULL) {
 		printf("Could not connect to default Move controller.\n"
-			"Please connect one via USB or Bluetooth.\n");
+				"Please connect one via USB or Bluetooth.\n");
 		exit(1);
 	}
 
@@ -462,7 +401,7 @@ PSMove* connectController() {
 int adaptToLighting(int lumMin, int expMin, int expMax) {
 
 	int exp = expMin;
-	cvhSetCameraParameters(0, 0, 0, exp, 0, 0xff, 0xff, 0xff);
+	th_set_camera_params(0, 0, 0, exp, 0, 0xff, 0xff, 0xff);
 
 	CvCapture* capture = cvCaptureFromCAM(CAM_TO_USE);
 
@@ -480,13 +419,13 @@ int adaptToLighting(int lumMin, int expMin, int expMax) {
 	int counter = 0;
 	int lastExp = exp;
 	while (1) {
-		frame = cvhQueryImage(capture);
+		frame = th_query_frame(capture);
 
 		if (!frame)
 			continue;
 
 		CvScalar avgColor = cvAvg(frame, 0x0);
-		float avgLum = cvhAvg(avgColor.val, 3);
+		float avgLum = th_avg(avgColor.val, 3);
 		sprintf(text, "Exposure: %d (0x%x)", exp, exp);
 		//cvhPutText(frame, text, cvPoint(10, 20), CV_RGB(0,200,0));
 		sprintf(text, "Avg Lum=%.0f", avgLum);
@@ -512,7 +451,7 @@ int adaptToLighting(int lumMin, int expMin, int expMax) {
 
 			if (lastExp != exp) {
 				// reconfigure the camera!
-				cvhSetCameraParameters(0, 0, 0, exp, 0, 0xff, 0xff, 0xff);
+				th_set_camera_params(0, 0, 0, exp, 0, 0xff, 0xff, 0xff);
 				cvReleaseCapture(&capture);
 				capture = cvCaptureFromCAM(CAM_TO_USE);
 				usleep(10000);
@@ -529,11 +468,10 @@ int adaptToLighting(int lumMin, int expMin, int expMax) {
 }
 
 void autoWB() {
-
 	int gain = 0;
 	int exp = adaptToLighting(20, 0x10, 0x18);
 
-	cvhSetCameraParameters(0, 0, 0, exp, gain, 0xff, 0xff, 0xff);
+	th_set_camera_params(0, 0, 0, exp, gain, 0xff, 0xff, 0xff);
 
 	CvCapture* capture = cvCaptureFromCAM(CAM_TO_USE);
 
@@ -558,30 +496,30 @@ void autoWB() {
 	char text[512];
 	int GATE = 1;
 	while (1) {
-		frame = cvhQueryImage(capture);
+		frame = th_query_frame(capture);
 
 		if (!frame)
 			continue;
 
-		cvhCreateImage(&hsv, cvGetSize(frame), frame->depth, frame->nChannels);
-		cvhCreateImage(&h_plane, cvGetSize(frame), frame->depth, 1);
-		cvhCreateImage(&s_plane, cvGetSize(frame), frame->depth, 1);
-		cvhCreateImage(&v_plane, cvGetSize(frame), frame->depth, 1);
+		th_create_image(&hsv, cvGetSize(frame), frame->depth, frame->nChannels);
+		th_create_image(&h_plane, cvGetSize(frame), frame->depth, 1);
+		th_create_image(&s_plane, cvGetSize(frame), frame->depth, 1);
+		th_create_image(&v_plane, cvGetSize(frame), frame->depth, 1);
 
 		cvCvtColor(frame, hsv, CV_BGR2HSV);
 		cvSplit(hsv, h_plane, s_plane, v_plane, 0);
 
 		cvCalcHist(&v_plane, ahist, 0, 0); // Compute histogram
 		cvNormalizeHist(ahist, 255); // Normalize it
-		cvhPlotHistogram(ahist, h_bins, "Value Histogram", cvhWhite);
+		th_plot_hist(ahist, h_bins, "Value Histogram", th_white);
 
 		avgColor = cvAvg(frame, 0x0);
 		sprintf(text, "Exposure: %d (0x%x)", exp, exp);
-		cvhPutText(frame, text, cvPoint(10, 20), CV_RGB(0,200,0));
+		th_put_text(frame, text, cvPoint(10, 20), CV_RGB(0,200,0));
 		sprintf(text, "Gain: %d (0x%x)", gain, gain);
-		cvhPutText(frame, text, cvPoint(10, 40), CV_RGB(0,200,0));
-		sprintf(text, "Avg Lum=%.0f", cvhAvg(avgColor.val, 3));
-		cvhPutText(frame, text, cvPoint(10, 60), CV_RGB(0,200,0));
+		th_put_text(frame, text, cvPoint(10, 40), CV_RGB(0,200,0));
+		sprintf(text, "Avg Lum=%.0f", th_avg(avgColor.val, 3));
+		th_put_text(frame, text, cvPoint(10, 60), CV_RGB(0,200,0));
 
 		cvShowImage("live camera feed", frame);
 
@@ -604,7 +542,7 @@ void autoWB() {
 
 		if (GATE && (key == '+' || key == '-' || key == '1' || key == '2')) {
 			GATE = 0;
-			cvhSetCameraParameters(0, 0, 0, exp, gain, 0xff, 0xff, 0xff);
+			th_set_camera_params(0, 0, 0, exp, gain, 0xff, 0xff, 0xff);
 			cvReleaseCapture(&capture);
 			capture = cvCaptureFromCAM(CAM_TO_USE);
 			usleep(10000);
@@ -616,76 +554,9 @@ void autoWB() {
 	cvReleaseCapture(&capture);
 }
 
-void diff() {
-	IplImage* img1 = cvLoadImage("out.jpg", 0);
-	IplImage* img2 = cvLoadImage("out1.jpg", 0);
-	IplImage* img3 = cvLoadImage("out2.jpg", 0);
-
-	int medK = cvhODD(img1->width / 100);
-	cvShowImage("1", img1);
-	cvShowImage("2", img2);
-	cvShowImage("3", img3);
-
-	cvAnd(img1, img2, img1, 0x0);
-	cvAnd(img1, img3, img1, 0x0);
-
-	cvSmooth(img1, img1, CV_MEDIAN, medK, medK, 0, 0);
-	cvThreshold(img1, img1, 50, 255, CV_THRESH_BINARY);
-	cvShowImage("M+G", img1);
-	//cvhSaveJPEG("erg.jpg", img1, 100);
-	cvhWaitForESC();
-}
-
-void videoGuess() {
-	cvNamedWindow("videoGuess", 1);
-	CvCapture* capture = cvCaptureFromCAM(CAM_TO_USE);
-
-	if (!capture) {
-		fprintf(stderr, "ERROR: capture is NULL \n");
-		getchar();
-	}
-
-	CvFont font;
-	double hScale = 0.5;
-	double vScale = 0.5;
-	int lineWidth = 1;
-	cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX | CV_FONT_ITALIC, hScale, vScale,
-			0, lineWidth, CV_AA);
-
-	IplImage* cap;
-
-	while (1) {
-		cap = cvhQueryImage(capture);
-		if (!cap)
-			continue;
-		/*
-		 printf("press 'p' for frame 1\n");
-		 cvhWaitForChar('p');
-		 // Get 1st frame
-		 cap = cvhQueryImage(capture);
-		 // init memory
-		 cvhCreateImage(&frame1, cvGetSize(cap), cap->depth, cap->nChannels);
-		 cvhCreateImage(&frame2, cvGetSize(cap), cap->depth, cap->nChannels);
-		 // copy the frame
-		 cvCopy(cap, frame1, 0x0);
-
-		 printf("press 'p' for frame 2\n");
-		 cvhWaitForChar('p');
-		 // Get 2nd frame
-		 cap = cvhQueryImage(capture);
-		 cvCopy(cap, frame2, 0x0);*/
-		findMoveColor(cap, cap, 0, 0);
-		//If ESC key pressed
-		int key = (cvWaitKey(10) & 255);
-		if (key == 27)
-			break;
-	}
-	// Release the capture device housekeeping
-	cvReleaseCapture(&capture);
-}
-
 void videoHist() {
 
+	HPTimer* timer = hp_timer_create();
 	CvCapture* capture = cvCaptureFromCAM(CAM_TO_USE);
 
 	if (!capture) {
@@ -706,7 +577,6 @@ void videoHist() {
 	// Create a window in which the captured images will be presented
 	// Show the image captured from the camera in the window and repeat
 	float diff = 0;
-	int tic;
 	char fps[256];
 	CvScalar bestColors[2];
 	while (1) {
@@ -720,9 +590,10 @@ void videoHist() {
 			break;
 		}
 
-		tic = clock();
+		hp_timer_start(timer);
 		findOptimalMoveColors(frame, 64, 5, bestColors, 2);
-		diff = 0.7 * diff + 0.3 * cvhClock2Sec(clock() - tic);
+		hp_timer_stop(timer);
+		diff = 0.85 * diff + 0.15 * (1.0 / hp_timer_get_seconds(timer));
 
 		sprintf(fps, "@%.0ffps", diff);
 		cvPutText(frame, fps, cvPoint(10, 20), &font, CV_RGB(0,200,0));
@@ -734,7 +605,7 @@ void videoHist() {
 			break;
 		//If 's' key pressed
 		if (key == 's') {
-			cvhSaveJPEG("out.jpg", frame, 100);
+			th_save_jpg("out.jpg", frame, 100);
 		}
 
 	}

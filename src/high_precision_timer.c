@@ -1,4 +1,4 @@
-#include "HighPrecisionTimer.h"
+#include "high_precision_timer.h"
 #include <stdlib.h>
 
 struct _HPTimer {
@@ -18,7 +18,7 @@ struct _HPTimer {
 ///////////////////////////////////////////////////////////////////////////////
 // constructor
 ///////////////////////////////////////////////////////////////////////////////
-HPTimer* createTimer() {
+HPTimer* hp_timer_create() {
 	HPTimer* t = (HPTimer*) calloc(1, sizeof(HPTimer));
 #ifdef WIN32
 	QueryPerformanceFrequency(&t->frequency);
@@ -34,7 +34,7 @@ HPTimer* createTimer() {
 	return t;
 }
 
-void releaseTimer(HPTimer* t) {
+void hp_timer_release(HPTimer* t) {
 	free(t);
 }
 
@@ -42,7 +42,7 @@ void releaseTimer(HPTimer* t) {
 // start timer.
 // startCount will be set at this point.
 ///////////////////////////////////////////////////////////////////////////////
-void startTimer(HPTimer* t) {
+void hp_timer_start(HPTimer* t) {
 	t->stopped = 0; // reset stop flag
 #ifdef WIN32
 	QueryPerformanceCounter(&t->startCount);
@@ -55,7 +55,7 @@ void startTimer(HPTimer* t) {
 // stop the timer.
 // endCount will be set at this point.
 ///////////////////////////////////////////////////////////////////////////////
-void stopTimer(HPTimer* t) {
+void hp_timer_stop(HPTimer* t) {
 	t->stopped = 1; // set timer stopped flag
 
 #ifdef WIN32
@@ -69,7 +69,7 @@ void stopTimer(HPTimer* t) {
 // compute elapsed time in micro-second resolution.
 // other getElapsedTime will call this first, then convert to correspond resolution.
 ///////////////////////////////////////////////////////////////////////////////
-double getElapsedTimeInMicroSec(HPTimer* t) {
+double hp_timer_get_micros(HPTimer* t) {
 #ifdef WIN32
 	if (!t->stopped)
 		QueryPerformanceCounter(&t->endCount);
@@ -92,20 +92,13 @@ double getElapsedTimeInMicroSec(HPTimer* t) {
 ///////////////////////////////////////////////////////////////////////////////
 // divide elapsedTimeInMicroSec by 1000
 ///////////////////////////////////////////////////////////////////////////////
-double getElapsedTimeInMilliSec(HPTimer* t) {
-	return getElapsedTimeInMicroSec(t) * 0.001;
+double hp_timer_get_millis(HPTimer* t) {
+	return hp_timer_get_micros(t) * 0.001;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // divide elapsedTimeInMicroSec by 1000000
 ///////////////////////////////////////////////////////////////////////////////
-double getElapsedTimeInSec(HPTimer* t) {
-	return getElapsedTimeInMicroSec(t) * 0.000001;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// same as getElapsedTimeInSec()
-///////////////////////////////////////////////////////////////////////////////
-double getElapsedTime(HPTimer* t) {
-	return getElapsedTimeInSec(t);
+double hp_timer_get_seconds(HPTimer* t) {
+	return hp_timer_get_micros(t) * 0.000001;
 }
