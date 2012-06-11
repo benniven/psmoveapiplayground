@@ -253,7 +253,6 @@ void findOptimalMoveColors(IplImage* img, int h_bins, int kSize,
 	// Compute HSV image and separate into colors
 	cvhCreateImage(&ahsv, cvGetSize(img), img->depth, 3);
 	cvhCreateImage(&ah_plane, cvGetSize(img), 8, 1);
-	cvhAutoDebugReset();
 	cvCvtColor(img, ahsv, CV_BGR2HSV);
 	cvSplit(ahsv, ah_plane, 0, 0, 0);
 	// Build and fill the histogram
