@@ -42,7 +42,6 @@
 #define ROIS 5                   // the number of levels of regions of interest (roi)
 #define CALIB_MIN_SIZE 100		 // minimum size of the estimated glowing sphere during calibration process
 #define CALIB_SIZE_STD 10	     // maximum standard deviation (in %) of the glowing spheres found during calibration process
-
 struct _PSMoveTracker {
 	int cam; // the camera to use
 	CvCapture* capture; // the camera device opened for capture
@@ -81,16 +80,17 @@ int tracker_adapt_to_light(PSMoveTracker *tracker, int lumMin, int expMin, int e
  **/
 void tracker_get_diff(CvCapture* capture, PSMove* move, int r, int g, int b, IplImage* on, IplImage* diff);
 
+int TRACE_IMG_COUNT;
 #define TRACE_NEW_LINE "<div style=\"clear:both;\"></div>"
 #define TRACE_TEXT_OK "<H1 style=\"font-size:150%; color:green\">OK</H1>"
 #define TRACE_TEXT_ERR "<H1 style=\"font-size:150%; color:red\">ERROR</H1>"
 
-void psmove_tracker_image_trace(PSMoveTracker *tracker, IplImage *image, const char *message, int n_prefix, const char* s_prefix, const char* line_postfix);
+void psmove_tracker_image_trace(PSMoveTracker *tracker, IplImage *image, const char *message, const char* line_postfix);
 void psmove_tracker_clear_trace();
 void psmove_tracker_text_trace(char *message, const char* line_postfix);
 void psmove_tracker_color_trace(CvScalar color, const char* line_postfix);
 
-#define psmove_tracker_trace(tracker, image, message, n_prefix, s_prefix, line_postfix) psmove_tracker_image_trace((tracker),(image),(message),(n_prefix),(s_prefix),(line_postfix))
+#define psmove_tracker_trace(tracker, image, message, line_postfix) psmove_tracker_image_trace((tracker),(image),(message),(line_postfix))
 #define psmove_tracker_trace_clear() psmove_tracker_clear_trace()
 #define psmove_tracker_trace_text(message, line_postfix) psmove_tracker_text_trace((message),(line_postfix))
 #define psmove_tracker_trace_color(color, line_postfix) psmove_tracker_color_trace((color),(line_postfix))
@@ -174,18 +174,18 @@ enum PSMoveTracker_Status psmove_tracker_enable(PSMoveTracker *tracker, PSMove *
 		// create a diff image
 		tracker_get_diff(t->capture, move, r, g, b, images[i], diffs[i]);
 
-		psmove_tracker_trace(tracker, images[i], "original image", i, "org", "");
-		psmove_tracker_trace(tracker, diffs[i], "raw diff", i, "1diff", "");
+		psmove_tracker_trace(tracker, images[i], "original image", "");
+		psmove_tracker_trace(tracker, diffs[i], "raw diff", "");
 		// threshold it to reduce image noise
 		cvThreshold(diffs[i], diffs[i], 20, 0xFF, CV_THRESH_BINARY);
 
-		psmove_tracker_trace(tracker, diffs[i], "thresh diff", i, "thresh", "");
+		psmove_tracker_trace(tracker, diffs[i], "thresh diff", "");
 
 		// use morphological operations to further remove noise
 		cvErode(diffs[i], diffs[i], t->kCalib, 1);
 		cvDilate(diffs[i], diffs[i], t->kCalib, 1);
 
-		psmove_tracker_trace(tracker, diffs[i], "cleaned diff", i, "morph", TRACE_NEW_LINE);
+		psmove_tracker_trace(tracker, diffs[i], "cleaned diff", TRACE_NEW_LINE);
 	}
 
 	// put the diff images together!
@@ -194,13 +194,12 @@ enum PSMoveTracker_Status psmove_tracker_enable(PSMoveTracker *tracker, PSMove *
 	}
 
 	psmove_tracker_trace_text("Final diff image: ", "");
-	psmove_tracker_trace(tracker, diffs[0], "final diff", BLINKS, "final", "");
+	psmove_tracker_trace(tracker, diffs[0], "final diff", "");
 	int pixels = cvCountNonZero(diffs[0]);
-	if(pixels<CALIB_MIN_SIZE){
+	if (pixels < CALIB_MIN_SIZE) {
 		psmove_tracker_trace_text(TRACE_TEXT_ERR, "");
 		psmove_tracker_trace_text("(not enough pixels set for estimation)", TRACE_NEW_LINE);
-	}
-	else
+	} else
 		psmove_tracker_trace_text(TRACE_TEXT_OK, TRACE_NEW_LINE);
 
 	// calculate the avg color within the remaining area
@@ -225,7 +224,7 @@ enum PSMoveTracker_Status psmove_tracker_enable(PSMoveTracker *tracker, PSMove *
 
 	psmove_tracker_trace_text("Trying to find the sphere by color ...", TRACE_NEW_LINE);
 	for (i = 0; i < BLINKS; i++) {
-		psmove_tracker_trace(tracker,images[i], "original", i, "orig_unfiltered", "");
+		psmove_tracker_trace(tracker, images[i], "original", "");
 		// convert to HSV
 		cvCvtColor(images[i], images[i], CV_BGR2HSV);
 
@@ -235,7 +234,7 @@ enum PSMoveTracker_Status psmove_tracker_enable(PSMoveTracker *tracker, PSMove *
 		cvErode(mask, mask, t->kTrack, 1);
 		cvDilate(mask, mask, t->kTrack, 1);
 
-		psmove_tracker_trace(tracker,mask, "filtered", i, "filtered", "");
+		psmove_tracker_trace(tracker, mask, "filtered", "");
 
 		// try to find the sphere as a contour
 		CvSeq* contour;
@@ -251,16 +250,16 @@ enum PSMoveTracker_Status psmove_tracker_enable(PSMoveTracker *tracker, PSMove *
 			psmove_tracker_trace_text(TRACE_TEXT_ERR, "");
 
 			if (contour == 0x0) {
-				psmove_tracker_trace_text("(no contour)","");
+				psmove_tracker_trace_text("(no contour)", "");
 				printf("%s\n", "no contours!");
 			} else if (contour->h_next != 0x0 || contour->h_prev != 0x0) {
-				psmove_tracker_trace_text("(there are other contours!)","");
+				psmove_tracker_trace_text("(there are other contours!)", "");
 				printf("%s\n", "there are other contours!");
 			} else if (sizes[i] <= 100) {
-				psmove_tracker_trace_text("(the contour is to small!)","");
+				psmove_tracker_trace_text("(the contour is to small!)", "");
 				printf("%s\n", "the contour is to small!");
 			}
-			psmove_tracker_trace_text("",TRACE_NEW_LINE);
+			psmove_tracker_trace_text("", TRACE_NEW_LINE);
 			// at least on contour was either not found or is invalid
 			all_contours_valid = 0;
 		} else {
@@ -605,6 +604,7 @@ void tracker_get_diff(CvCapture* capture, PSMove* move, int r, int g, int b, Ipl
 }
 
 void psmove_tracker_clear_trace() {
+	TRACE_IMG_COUNT = 0;
 	FILE *pFile;
 	pFile = fopen("debug.html", "w");
 	if (pFile != NULL) {
@@ -642,13 +642,14 @@ void psmove_tracker_text_trace(char *message, const char* line_postfix) {
 		fclose(pFile);
 	}
 }
-void psmove_tracker_image_trace(PSMoveTracker *tracker, IplImage *image, const char *message, int n_prefix, const char* s_prefix, const char* line_postfix) {
+void psmove_tracker_image_trace(PSMoveTracker *tracker, IplImage *image, const char *message, const char* line_postfix) {
 	FILE *pFile;
 	pFile = fopen("debug.html", "a");
 	char img_name[512];
 	char img_tag[512];
 
-	sprintf(img_name, "%s/%d_%s%s", "./debug/", n_prefix, s_prefix, ".jpg");
+	sprintf(img_name, "%s%d%s", "./debug/image_", TRACE_IMG_COUNT, ".jpg");
+	TRACE_IMG_COUNT++;
 	th_save_jpg(img_name, image, 100);
 
 	const char* tag_prototype = "<div style=\"float:left;\"><table>"
