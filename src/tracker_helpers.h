@@ -37,6 +37,7 @@ IplImage* th_plot_hist(CvHistogram* hist, int bins, const char* windowName,
 
 // simly saves a CvArr* on the filesystem
 int th_save_jpg(const char* path, const CvArr* image, int quality);
+int th_save_jpgEx(const char* folder, const char* filename, int prefix, const CvArr* image, int quality);
 
 // prints a array to system out ala {a,b,c...}
 void th_print_array(double* src, int len);

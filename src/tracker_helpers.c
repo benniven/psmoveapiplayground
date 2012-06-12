@@ -52,8 +52,7 @@ void th_plus(double* l, double* r, double* result, int len) {
 int th_create_image(IplImage** img, CvSize s, int depth, int channels) {
 	int R = 0;
 	IplImage* src = *img;
-	if (src == 0x0 || src->depth != depth || src->width != s.width
-			|| src->height != s.height || src->nChannels != channels) {
+	if (src == 0x0 || src->depth != depth || src->width != s.width || src->height != s.height || src->nChannels != channels) {
 		// yes it exists, but has wrong properties -> delete it!
 		if (src != 0x0)
 			cvReleaseImage(img);
@@ -63,8 +62,7 @@ int th_create_image(IplImage** img, CvSize s, int depth, int channels) {
 	}
 	return R;
 }
-int th_create_hist(CvHistogram** hist, int dims, int* sizes, int type,
-		float** ranges, int uniform) {
+int th_create_hist(CvHistogram** hist, int dims, int* sizes, int type, float** ranges, int uniform) {
 	int R = 0;
 	CvHistogram* src = *hist;
 	if (src == 0x0) {
@@ -97,14 +95,12 @@ void th_put_text(IplImage* img, const char* text, CvPoint p, CvScalar color) {
 	double hScale = 0.5;
 	double vScale = 0.5;
 	int lineWidth = 1;
-	cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX | CV_FONT_ITALIC, hScale, vScale,
-			0, lineWidth, CV_AA);
+	cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX | CV_FONT_ITALIC, hScale, vScale, 0, lineWidth, CV_AA);
 	cvPutText(img, text, p, &font, color);
 }
 
 IplImage* histImg;
-IplImage* th_plot_hist(CvHistogram* hist, int bins, const char* windowName,
-		CvScalar lineColor) {
+IplImage* th_plot_hist(CvHistogram* hist, int bins, const char* windowName, CvScalar lineColor) {
 	th_create_image(&histImg, cvSize(512, 512 * 0.6), 8, 3);
 	float xStep = histImg->width / bins;
 	CvPoint p0, p1;
@@ -130,6 +126,12 @@ IplImage* th_plot_hist(CvHistogram* hist, int bins, const char* windowName,
 int th_save_jpg(const char* path, const CvArr* image, int quality) {
 	int imgParams[] = { CV_IMWRITE_JPEG_QUALITY, quality, 0 };
 	return cvSaveImage(path, image, imgParams);
+}
+
+int th_save_jpgEx(const char* folder, const char* filename, int prefix, const CvArr* image, int quality) {
+	char path[512];
+	sprintf(path, "%s/%d_%s", folder, prefix, filename);
+	return th_save_jpg(path, image, quality);
 }
 
 void th_print_array(double* src, int len) {
@@ -173,8 +175,7 @@ CvScalar th_hsv2bgr_alt(float hue) {
 	while ((hue < 0))
 		hue = hue + 180;
 
-	int sectorData[][3] = { { 0, 2, 1 }, { 1, 2, 0 }, { 1, 0, 2 }, { 2, 0, 1 },
-			{ 2, 1, 0 }, { 0, 1, 2 } };
+	int sectorData[][3] = { { 0, 2, 1 }, { 1, 2, 0 }, { 1, 0, 2 }, { 2, 0, 1 }, { 2, 1, 0 }, { 0, 1, 2 } };
 	hue *= 0.033333333333333333333333333333333f;
 	sector = cvFloor(hue);
 	p = cvRound(255 * (hue - sector));
@@ -222,7 +223,8 @@ void th_wait(char c) {
 
 IplImage* th_query_frame(CvCapture* cap) {
 	IplImage* frame = cvQueryFrame(cap);
-	frame = cvQueryFrame(cap);
+	// TODO: successive calls are bad!
+	//frame = cvQueryFrame(cap);
 	return frame;
 }
 
@@ -269,8 +271,7 @@ int th_file_exists(const char* file) {
 #define regWBG_B	"X_WhiteBalanceG"
 #define regWBR_B	"X_WhiteBalanceR"
 
-void th_set_camera_params(int AutoAEC, int AutoAGC, int AutoAWB, int Exposure,
-		int Gain, int WhiteBalanceB, int WhiteBalanceG, int WhiteBalanceR) {
+void th_set_camera_params(int AutoAEC, int AutoAGC, int AutoAWB, int Exposure, int Gain, int WhiteBalanceB, int WhiteBalanceG, int WhiteBalanceR) {
 #ifdef WIN32
 	HKEY hKey;
 	DWORD l = sizeof(DWORD);
@@ -295,28 +296,21 @@ void th_set_camera_params(int AutoAEC, int AutoAGC, int AutoAWB, int Exposure,
 	DWORD dWhiteBalanceG = WhiteBalanceG & 0xFF; // ranges from 0-255
 	DWORD dWhiteBalanceR = WhiteBalanceR & 0xFF; // ranges from 0-255
 	if (AutoAEC >= 0)
-		RegSetValueExA(hKey, "AutoAEC", 0, REG_DWORD, (CONST BYTE*) &dAutoAEC,
-				l);
+		RegSetValueExA(hKey, "AutoAEC", 0, REG_DWORD, (CONST BYTE*) &dAutoAEC, l);
 	if (AutoAGC >= 0)
-		RegSetValueExA(hKey, "AutoAGC", 0, REG_DWORD, (CONST BYTE*) &dAutoAGC,
-				l);
+		RegSetValueExA(hKey, "AutoAGC", 0, REG_DWORD, (CONST BYTE*) &dAutoAGC, l);
 	if (AutoAWB >= 0)
-		RegSetValueExA(hKey, "AutoAWB", 0, REG_DWORD, (CONST BYTE*) &dAutoAWB,
-				l);
+		RegSetValueExA(hKey, "AutoAWB", 0, REG_DWORD, (CONST BYTE*) &dAutoAWB, l);
 	if (Exposure >= 0)
-		RegSetValueExA(hKey, "Exposure", 0, REG_DWORD, (CONST BYTE*) &dExposure,
-				l);
+		RegSetValueExA(hKey, "Exposure", 0, REG_DWORD, (CONST BYTE*) &dExposure, l);
 	if (Gain >= 0)
 		RegSetValueExA(hKey, "Gain", 0, REG_DWORD, (CONST BYTE*) &dGain, l);
 	if (WhiteBalanceB >= 0)
-		RegSetValueExA(hKey, "WhiteBalanceB", 0, REG_DWORD,
-				(CONST BYTE*) &dWhiteBalanceB, l);
+		RegSetValueExA(hKey, "WhiteBalanceB", 0, REG_DWORD, (CONST BYTE*) &dWhiteBalanceB, l);
 	if (WhiteBalanceG >= 0)
-		RegSetValueExA(hKey, "WhiteBalanceG", 0, REG_DWORD,
-				(CONST BYTE*) &dWhiteBalanceG, l);
+		RegSetValueExA(hKey, "WhiteBalanceG", 0, REG_DWORD, (CONST BYTE*) &dWhiteBalanceG, l);
 	if (WhiteBalanceR >= 0)
-		RegSetValueExA(hKey, "WhiteBalanceR", 0, REG_DWORD,
-				(CONST BYTE*) &dWhiteBalanceR, l);
+		RegSetValueExA(hKey, "WhiteBalanceR", 0, REG_DWORD, (CONST BYTE*) &dWhiteBalanceR, l);
 #endif
 }
 
@@ -352,21 +346,14 @@ void th_backup_camera_params() {
 		RegQueryValueEx(hKey, "WhiteBalanceG", NULL, NULL, (LPBYTE) &wbG, &l);
 		RegQueryValueEx(hKey, "WhiteBalanceR", NULL, NULL, (LPBYTE) &wbR, &l);
 
-		RegSetValueExA(hKey, "X_AutoAEC", 0, REG_DWORD, (CONST BYTE*) &AutoAEC,
-				l);
-		RegSetValueExA(hKey, "X_AutoAGC", 0, REG_DWORD, (CONST BYTE*) &AutoAGC,
-				l);
-		RegSetValueExA(hKey, "X_AutoAWB", 0, REG_DWORD, (CONST BYTE*) &AutoAWB,
-				l);
-		RegSetValueExA(hKey, "X_Exposure", 0, REG_DWORD,
-				(CONST BYTE*) &Exposure, l);
+		RegSetValueExA(hKey, "X_AutoAEC", 0, REG_DWORD, (CONST BYTE*) &AutoAEC, l);
+		RegSetValueExA(hKey, "X_AutoAGC", 0, REG_DWORD, (CONST BYTE*) &AutoAGC, l);
+		RegSetValueExA(hKey, "X_AutoAWB", 0, REG_DWORD, (CONST BYTE*) &AutoAWB, l);
+		RegSetValueExA(hKey, "X_Exposure", 0, REG_DWORD, (CONST BYTE*) &Exposure, l);
 		RegSetValueExA(hKey, "X_Gain", 0, REG_DWORD, (CONST BYTE*) &Gain, l);
-		RegSetValueExA(hKey, "X_WhiteBalanceB", 0, REG_DWORD,
-				(CONST BYTE*) &wbB, l);
-		RegSetValueExA(hKey, "X_WhiteBalanceG", 0, REG_DWORD,
-				(CONST BYTE*) &wbG, l);
-		RegSetValueExA(hKey, "X_WhiteBalanceR", 0, REG_DWORD,
-				(CONST BYTE*) &wbR, l);
+		RegSetValueExA(hKey, "X_WhiteBalanceB", 0, REG_DWORD, (CONST BYTE*) &wbB, l);
+		RegSetValueExA(hKey, "X_WhiteBalanceG", 0, REG_DWORD, (CONST BYTE*) &wbG, l);
+		RegSetValueExA(hKey, "X_WhiteBalanceR", 0, REG_DWORD, (CONST BYTE*) &wbR, l);
 	}
 #endif
 }
@@ -396,51 +383,37 @@ void th_restore_camera_params() {
 	// if there is a backup, restore it!
 	err = RegQueryValueEx(hKey, "X_Gain", NULL, NULL, (LPBYTE) &Gain, &l);
 	if (err == ERROR_SUCCESS) {
-		err = RegQueryValueEx(hKey, "X_AutoAEC", NULL, NULL, (LPBYTE) &AutoAEC,
-				&l);
+		err = RegQueryValueEx(hKey, "X_AutoAEC", NULL, NULL, (LPBYTE) &AutoAEC, &l);
 		if (err == ERROR_SUCCESS)
-			RegSetValueExA(hKey, "AutoAEC", 0, REG_DWORD,
-					(CONST BYTE*) &AutoAEC, l);
+			RegSetValueExA(hKey, "AutoAEC", 0, REG_DWORD, (CONST BYTE*) &AutoAEC, l);
 
-		err = RegQueryValueEx(hKey, "X_AutoAGC", NULL, NULL, (LPBYTE) &AutoAGC,
-				&l);
+		err = RegQueryValueEx(hKey, "X_AutoAGC", NULL, NULL, (LPBYTE) &AutoAGC, &l);
 		if (err == ERROR_SUCCESS)
-			RegSetValueExA(hKey, "AutoAGC", 0, REG_DWORD,
-					(CONST BYTE*) &AutoAGC, l);
+			RegSetValueExA(hKey, "AutoAGC", 0, REG_DWORD, (CONST BYTE*) &AutoAGC, l);
 
-		err = RegQueryValueEx(hKey, "X_AutoAWB", NULL, NULL, (LPBYTE) &AutoAWB,
-				&l);
+		err = RegQueryValueEx(hKey, "X_AutoAWB", NULL, NULL, (LPBYTE) &AutoAWB, &l);
 		if (err == ERROR_SUCCESS)
-			RegSetValueExA(hKey, "AutoAWB", 0, REG_DWORD,
-					(CONST BYTE*) &AutoAWB, l);
+			RegSetValueExA(hKey, "AutoAWB", 0, REG_DWORD, (CONST BYTE*) &AutoAWB, l);
 
-		err = RegQueryValueEx(hKey, "X_Exposure", NULL, NULL,
-				(LPBYTE) &Exposure, &l);
+		err = RegQueryValueEx(hKey, "X_Exposure", NULL, NULL, (LPBYTE) &Exposure, &l);
 		if (err == ERROR_SUCCESS)
-			RegSetValueExA(hKey, "Exposure", 0, REG_DWORD,
-					(CONST BYTE*) &Exposure, l);
+			RegSetValueExA(hKey, "Exposure", 0, REG_DWORD, (CONST BYTE*) &Exposure, l);
 
 		err = RegQueryValueEx(hKey, "X_Gain", NULL, NULL, (LPBYTE) &Gain, &l);
 		if (err == ERROR_SUCCESS)
 			RegSetValueExA(hKey, "Gain", 0, REG_DWORD, (CONST BYTE*) &Gain, l);
 
-		err = RegQueryValueEx(hKey, "X_WhiteBalanceB", NULL, NULL,
-				(LPBYTE) &wbB, &l);
+		err = RegQueryValueEx(hKey, "X_WhiteBalanceB", NULL, NULL, (LPBYTE) &wbB, &l);
 		if (err == ERROR_SUCCESS)
-			RegSetValueExA(hKey, "WhiteBalanceB", 0, REG_DWORD,
-					(CONST BYTE*) &wbB, l);
+			RegSetValueExA(hKey, "WhiteBalanceB", 0, REG_DWORD, (CONST BYTE*) &wbB, l);
 
-		err = RegQueryValueEx(hKey, "X_WhiteBalanceG", NULL, NULL,
-				(LPBYTE) &wbG, &l);
+		err = RegQueryValueEx(hKey, "X_WhiteBalanceG", NULL, NULL, (LPBYTE) &wbG, &l);
 		if (err == ERROR_SUCCESS)
-			RegSetValueExA(hKey, "WhiteBalanceG", 0, REG_DWORD,
-					(CONST BYTE*) &wbG, l);
+			RegSetValueExA(hKey, "WhiteBalanceG", 0, REG_DWORD, (CONST BYTE*) &wbG, l);
 
-		err = RegQueryValueEx(hKey, "X_WhiteBalanceR", NULL, NULL,
-				(LPBYTE) &wbR, &l);
+		err = RegQueryValueEx(hKey, "X_WhiteBalanceR", NULL, NULL, (LPBYTE) &wbR, &l);
 		if (err == ERROR_SUCCESS)
-			RegSetValueExA(hKey, "WhiteBalanceR", 0, REG_DWORD,
-					(CONST BYTE*) &wbR, l);
+			RegSetValueExA(hKey, "WhiteBalanceR", 0, REG_DWORD, (CONST BYTE*) &wbR, l);
 
 		// remove the backup!
 		RegDeleteValueA(hKey, "X_AutoAEC");
