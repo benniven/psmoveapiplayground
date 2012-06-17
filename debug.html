@@ -1,0 +1,120 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+	<head>
+		<link rel="stylesheet" type="text/css" href="./debug_normal.css">
+		<script type="text/javascript" src="./debug.js"></script>
+		<script type="text/javascript">
+			function loadDebugOutput()
+			{			
+				var table = document.createElement("table");
+				// display diff generation process
+				for(var i=0; i<originals.length; i++) {
+					var row = document.createElement("tr");
+
+					addToRow(getImage(originals[i]), row);
+					addToRow(getImage(rawdiffs[i]), row);
+					addToRow(getImage(threshdiffs[i]), row);
+					addToRow(getImage(erodediffs[i]), row);
+
+					table.appendChild(row);
+				}
+				
+				var row = document.createElement("tr");
+				var text = '';
+				// display final diff info
+				if(finalCountourOK>0)
+					text='<font class="cell-ok">final countour OK!</font>';
+				else
+					text='<font class="cell-error">final countour BAD!</font>';
+				addToRow(text, row);
+				// show estimated color
+				text ='<font class="cell">Estimated:' + getColorDiv(estimatedColor);
+				text+='Assigned:' + getColorDiv(assignedColor)+'</font>';
+				addToRow(text,row);
+				// show final diff
+				addToRow('', row);
+				text=getImage(finaldiff[0]);
+				addToRow(text, row);
+				table.appendChild(row);
+				
+				// show estimated color check
+				for(var i=0; i<filtered.length; i++) {
+					var row = document.createElement("tr");
+					addToRow(getImage(filtered[i]), row);
+					if(contours[i]=='OK')
+						text='<font class="cell-ok">'+contours[i]+'</font>';
+					else
+						text='<font class="cell-error">'+contours[i]+'</font>';
+						
+					addToRow(text, row);
+					table.appendChild(row);
+				}
+				
+				document.getElementById("table_target").appendChild(table);
+			}
+
+			function addToRow(img, row)
+			{
+				var cell = document.createElement("td");
+				cell.innerHTML = img;
+				row.appendChild(cell);
+			}
+			
+			function getImage(path)
+			{
+				var data = '';
+				data+='<img class="table" src="'+ path +'"';
+				data+='  onmouseover="showPreview(this.src);"';
+				data+='  onmouseout="hidePreview();">';
+				data+='</img>';
+				return data;
+			}
+			
+			function showPreview(bild)
+			{
+				var prevImage = document.getElementById('prev_image');
+				prevImage.src=bild;
+				
+				var prevDiv =  document.getElementById('div_preview');
+				prevDiv.setAttribute('style', '');
+				prevDiv.setAttribute('style', 'margin-top: '+getVertScrollPos()+'px;');
+			}
+			
+			function hidePreview()
+			{
+				var prevImage = document.getElementById('prev_image');
+				var prevDiv = document.getElementById('div_preview');
+				prevDiv.setAttribute('style', 'visibility:hidden;');
+			}
+
+			
+			function getVertScrollPos()
+			{
+				return document.body.scrollTop || document.documentElement.scrollTop;
+			}
+			
+			function getColorDiv(color)
+			{
+				return '<div style="background-color:#'+color+';">0x'+color+'</div>';
+			}
+			
+		</script>
+		<title>
+			Calibration Debug Output
+		</title>
+	</head>
+	
+	<body onload="loadDebugOutput();">
+		<div id="div_thumbs" style="float:left;">
+			<h3>Calibration</h3>
+			<div id="table_target"></div>
+		</div>
+
+		<div id="div_preview" class="preview" style="visibility:hidden;">
+			<h3>Preview</h3>
+			<img id="prev_image" class="preview"></img>
+		</div>
+
+		<div style="clear:both;"></div>
+	</body>
+</html>
