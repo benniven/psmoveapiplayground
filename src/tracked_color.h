@@ -1,5 +1,5 @@
-#ifndef __TRACKED_CONTROLLER_H
-#define __TRACKED_CONTROLLER_H
+#ifndef __TRACKED_COLOR_H
+#define __TRACKED_COLOR_H
 
 /**
  * PS Move API - An interface for the PS Move Motion Controller
@@ -33,39 +33,30 @@
 
 #include "psmove.h"
 
-struct _TrackedController;
-typedef struct _TrackedController TrackedController;
+struct _PSMoveTrackingColor;
+typedef struct _PSMoveTrackingColor PSMoveTrackingColor;
 
-struct _TrackedController {
-	PSMove* move;
-	// defined color
-	CvScalar dColor;
-	// estimated color
-	CvScalar eColor;
-	CvScalar eColorHSV;
-
-	int roi_x;
-	int roi_y;
-	//CvRect roi; // this saves the current region of interest
-	int roi_level; // the current index for the level of ROI
-
-	float x,y,z;
-	TrackedController* next;
+struct _PSMoveTrackingColor {
+	unsigned char r;
+	unsigned char g;
+	unsigned char b;
+	int is_used;
+	PSMoveTrackingColor* next;
 };
 
-TrackedController*
-tracked_controller_create();
+PSMoveTrackingColor*
+tracked_color_create();
 
 void
-tracked_controller_release(TrackedController** tc, int whole_list);
+tracked_color_release(PSMoveTrackingColor** tc, int whole_list);
 
-TrackedController*
-tracked_controller_find(TrackedController* head, PSMove* data);
+PSMoveTrackingColor*
+tracked_color_find(PSMoveTrackingColor* head, unsigned char r, unsigned char g, unsigned char b);
 
-TrackedController*
-tracked_controller_insert(TrackedController** head, PSMove* data);
+PSMoveTrackingColor*
+tracked_color_insert(PSMoveTrackingColor** head, unsigned char r, unsigned char g, unsigned char b);
 
 void
-tracked_controller_remove(TrackedController** head, PSMove* data);
+tracked_color_remove(PSMoveTrackingColor** head, unsigned char r, unsigned char g, unsigned char b);
 
-#endif //__TRACKED_CONTROLLER_H
+#endif //__TRACKED_COLOR_H

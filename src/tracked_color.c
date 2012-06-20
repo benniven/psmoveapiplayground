@@ -26,65 +26,57 @@
  * POSSIBILITY OF SUCH DAMAGE.
  **/
 
-#include "tracked_controller.h"
+#include "tracked_color.h"
 
-TrackedController*
-tracked_controller_create() {
-	TrackedController* tc = (TrackedController*) calloc(1, sizeof(TrackedController));
+PSMoveTrackingColor*
+tracked_color_create() {
+	PSMoveTrackingColor* tc = (PSMoveTrackingColor*) calloc(1, sizeof(PSMoveTrackingColor));
 
-	tc->move = 0x0;
-
-	tc->dColor = cvScalar(0,0,0,0);
-	tc->eColor = cvScalar(0,0,0,0);
-	tc->eColorHSV = cvScalar(0,0,0,0);
-
-	tc->roi_x=0;
-	tc->roi_y=0;
-	tc->roi_level = 0;
-
-	tc->x=0;
-	tc->y=0;
-	tc->z=0;
-
-	tc->next = 0x0;
+	tc->r = 0;
+	tc->g = 0;
+	tc->b = 0;
+	tc->is_used = 0;
+	tc->next = 0;
 	return tc;
 }
 
-void tracked_controller_release(TrackedController** tc, int whole_list) {
+void tracked_color_release(PSMoveTrackingColor** tc, int whole_list) {
 	if (whole_list == 0) {
 		free(*tc);
 	} else {
-		TrackedController* tmp = *tc;
-		TrackedController* del;
+		PSMoveTrackingColor* tmp = *tc;
+		PSMoveTrackingColor* del;
 		for (; tmp != 0x0;) {
 			del = tmp;
 			tmp = tmp->next;
 			free(del);
 		}
-		*tc=0x0;
+		*tc = 0x0;
 	}
 }
 
-TrackedController*
-tracked_controller_find(TrackedController* head, PSMove* data) {
-	TrackedController* tmp = head;
+PSMoveTrackingColor*
+tracked_color_find(PSMoveTrackingColor* head, unsigned char r, unsigned char g, unsigned char b) {
+	PSMoveTrackingColor* tmp = head;
 	for (; tmp != 0x0; tmp = tmp->next) {
-		if (tmp->move == data)
+		if (tmp->r == r && tmp->g == g && tmp->b == b)
 			return tmp;
 	}
 	return 0;
 }
 
-TrackedController* tracked_controller_insert(TrackedController** head, PSMove* data) {
-	TrackedController* tmp = *head;
-	TrackedController* last = 0x0;
+PSMoveTrackingColor* tracked_color_insert(PSMoveTrackingColor** head, unsigned char r, unsigned char g, unsigned char b) {
+	PSMoveTrackingColor* tmp = *head;
+	PSMoveTrackingColor* last = 0x0;
 
 	for (; tmp != 0x0; tmp = tmp->next) {
 		last = tmp;
 	}
 
-	TrackedController* item = tracked_controller_create();
-	item->move = data;
+	PSMoveTrackingColor* item = tracked_color_create();
+	item->r = r;
+	item->g = g;
+	item->b = b;
 
 	if (last == 0x0) {
 		// set the head
@@ -96,13 +88,13 @@ TrackedController* tracked_controller_insert(TrackedController** head, PSMove* d
 	return item;
 }
 
-void tracked_controller_remove(TrackedController** head, PSMove* data) {
-	TrackedController* tmp = *head;
-	TrackedController* delete = 0x0;
-	TrackedController* prev = 0x0;
+void tracked_color_remove(PSMoveTrackingColor** head, unsigned char r, unsigned char g, unsigned char b) {
+	PSMoveTrackingColor* tmp = *head;
+	PSMoveTrackingColor* delete = 0x0;
+	PSMoveTrackingColor* prev = 0x0;
 
 	for (; tmp != 0x0; tmp = tmp->next) {
-		if (tmp->move == data) {
+		if (tmp->r == r && tmp->g == g && tmp->b == b) {
 			delete = tmp;
 			break;
 		}
@@ -118,7 +110,7 @@ void tracked_controller_remove(TrackedController** head, PSMove* data) {
 			*head = delete->next;
 		}
 
-		tracked_controller_release(&delete,0);
+		tracked_color_release(&delete, 0);
 	}
 }
 

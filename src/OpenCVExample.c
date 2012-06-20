@@ -76,7 +76,7 @@ void calibrate() {
 
 		// this is the tracking algo
 		hp_timer_start(timer);
-		psmove_tracker_update(tracker, controller);
+		psmove_tracker_update(tracker, 0x0);
 		psmove_tracker_get_position(tracker, controller, &p.x, &p.y, 0x0);
 		hp_timer_stop(timer);
 

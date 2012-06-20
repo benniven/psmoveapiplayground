@@ -36,7 +36,7 @@
 #define PSMOVE_TRACKER_POSITION_Y_MAX 480
 
 /* For now, we only allow 1 controller to be tracked */
-#define PSMOVE_TRACKER_MAX_CONTROLLERS 1
+#define PSMOVE_TRACKER_MAX_CONTROLLERS 2
 
 /* Opaque data structure, defined only in psmove_tracker.c */
 struct _PSMoveTracker;
