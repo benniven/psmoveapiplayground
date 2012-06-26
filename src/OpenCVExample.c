@@ -16,6 +16,7 @@
 
 #include "psmove.h"
 #include "psmove_tracker.h"
+#include "camera/camera_control.h"
 
 /* Define which camera to use (zero-based index or CV_CAP_ANY) */
 #define CAM_TO_USE 1
@@ -27,30 +28,25 @@ PSMove* connectController();
 
 int main(int arg, char** args) {
 	calibrate();
-	// autoWB();
-	// videoHist();
 	return 0;
 }
 
 void calibrate() {
+	printf("### Trying to init PSMove:\n");
 	PSMove* controller = connectController();
+	printf("### Trying to init PSMoveTracker:\n");
 	PSMoveTracker* tracker = psmove_tracker_new();
-	HPTimer* timer = hp_timer_create();
-	CvCapture* capture = cvCaptureFromCAM(CAM_TO_USE);
+
+	printf("### tracker & controller initialized\n");
+	psmove_set_leds(controller, 0xff, 0, 0);
+	psmove_update_leds(controller);
+
 	IplImage* frame;
-	CvScalar c;
-	CvScalar ic;
-	float fps = 30;
-	char text[256];
 	unsigned char r, g, b;
 	while (1) {
 		int erg = psmove_tracker_enable(tracker, controller);
 		if (erg == Tracker_CALIBRATED) {
 			psmove_tracker_get_color(tracker, controller, &r, &g, &b);
-			c.val[0] = b;
-			c.val[1] = g;
-			c.val[2] = r;
-			ic = cvScalar(0xff - c.val[0], 0xff - c.val[1], 0xff - c.val[2], 0x0);
 			break;
 		} else {
 			cvNamedWindow("unable to calibrate (ESC to retry)", 0);
@@ -58,8 +54,6 @@ void calibrate() {
 		}
 	}
 
-	float avgLum = 0;
-	CvScalar avgC;
 	CvPoint p;
 
 	// this seems to be a nice color
@@ -74,80 +68,16 @@ void calibrate() {
 		psmove_set_leds(controller, r, g, b);
 		psmove_update_leds(controller);
 
-		// this is the tracking algo
-		hp_timer_start(timer);
-		psmove_tracker_update(tracker, 0x0);
+		psmove_tracker_update(tracker, controller);
 		psmove_tracker_get_position(tracker, controller, &p.x, &p.y, 0x0);
-		hp_timer_stop(timer);
 
-		//cvRectangle(frame, cvPoint(roi.x, roi.y), cvPoint(roi.x + roi.width, roi.y + roi.height), th_white, 3, 8, 0);
-		//cvRectangle(frame, cvPoint(roi.x, roi.y), cvPoint(roi.x + roi.width, roi.y + roi.height), th_red, 1, 8, 0);
-
-		fps = 0.85 * fps + 0.15 * (1.0 / hp_timer_get_seconds(timer));
-
-		cvRectangle(frame, cvPoint(0, 0), cvPoint(frame->width, 25), th_black, CV_FILLED, 8, 0);
-		sprintf(text, "fps:%.0f", fps);
-		th_put_text(frame, text, cvPoint(10, 20), c);
-
-		sprintf(text, "RGB:%x,%x,%x", (int) c.val[2], (int) c.val[1], (int) c.val[0]);
-		th_put_text(frame, text, cvPoint(110, 20), c);
-
-		avgC = cvAvg(frame, 0x0);
-		avgLum = th_avg(avgC.val, 3);
-		sprintf(text, "avg(lum):%.0f", avgLum);
-		th_put_text(frame, text, cvPoint(255, 20), c);
-
-		//sprintf(text, "exp:%d", exp);
-		//th_put_text(frame, text, cvPoint(400, 20), c);
-
-		//sprintf(text, "ROI:%dx%d", roi.width, roi.height);
-		//th_put_text(frame, text, cvPoint(505, 20), c);
-
-		cvCircle(frame, p, 4, th_black, 4, 8, 0);
-		cvCircle(frame, p, 4, ic, 2, 8, 0);
 		cvShowImage("live camera feed", frame);
 		//If ESC key pressed
 		if (key == 27)
 			break;
 	}
-	hp_timer_release(timer);
 	psmove_disconnect(controller);
-	cvReleaseCapture(&capture);
 }
-
-/*void tracker_get_diff(CvCapture** capture, PSMove* controller, int exp, IplImage* on, IplImage* diff) {
- int delay = 1000000 / 4;
- IplImage* frame;
- if (exp >= 0) {
- cvReleaseCapture(capture);
- th_set_camera_params(0, 0, 1, exp, 0, -1, -1, -1);
- usleep(delay);
- cvCaptureFromCAM(CAM_TO_USE);
- }
- psmove_set_leds(controller, BCr, BCg, BCb);
- psmove_update_leds(controller);
- usleep(delay);
- frame = th_query_frame(*capture);
- // copy the color picture!
- cvCopy(frame, on, 0x0);
-
- psmove_set_leds(controller, 0, 0, 0);
- psmove_update_leds(controller);
- usleep(delay);
- frame = th_query_frame(*capture);
-
- IplImage* grey1 = cvCloneImage(diff);
- IplImage* grey2 = cvCloneImage(diff);
-
- cvCvtColor(frame, grey1, CV_BGR2GRAY);
- cvCvtColor(on, grey2, CV_BGR2GRAY);
-
- // calculate the diff of these two cleaned up images
- cvAbsDiff(grey1, grey2, diff);
-
- cvReleaseImage(&grey1);
- cvReleaseImage(&grey2);
- }*/
 
 PSMove* connectController() {
 	PSMove *move;
@@ -161,11 +91,16 @@ PSMove* connectController() {
 
 	if (move == NULL) {
 		printf("Could not connect to default Move controller.\n"
-				"Please connect one via USB or Bluetooth.\n");
+			"Please connect one via USB or Bluetooth.\n");
 		exit(1);
 	}
 
 	ctype = psmove_connection_type(move);
+#ifndef WIN32
+	// TODO: wieso geht das nicht onne (unter linux)
+	ctype = Conn_USB;
+#endif
+
 	switch (ctype) {
 	case Conn_USB:
 		printf("Connected via USB.\n");
@@ -193,9 +128,10 @@ PSMove* connectController() {
 
 void autoWB() {
 	int gain = 0;
-	int exp = 0x10;		//tracker_adapt_to_light(20, 0x10, 0x18);
+	int exp = 0x10; //tracker_adapt_to_light(20, 0x10, 0x18);
 
-	th_set_camera_params(0, 0, 0, exp, gain, 0xff, 0xff, 0xff);
+	// TODO: Camera Control
+	//th_set_camera_params(0, 0, 0, exp, gain, 0xff, 0xff, 0xff);
 
 	CvCapture* capture = cvCaptureFromCAM(CAM_TO_USE);
 
@@ -220,7 +156,8 @@ void autoWB() {
 	char text[512];
 	int GATE = 1;
 	while (1) {
-		frame = th_query_frame(capture);
+		// TODO: camera control
+		//frame = th_query_frame(capture);
 
 		if (!frame)
 			continue;
@@ -239,11 +176,11 @@ void autoWB() {
 
 		avgColor = cvAvg(frame, 0x0);
 		sprintf(text, "Exposure: %d (0x%x)", exp, exp);
-		th_put_text(frame, text, cvPoint(10, 20), CV_RGB(0,200,0));
+		th_put_text(frame, text, cvPoint(10, 20), CV_RGB(0,200,0), 0.5);
 		sprintf(text, "Gain: %d (0x%x)", gain, gain);
-		th_put_text(frame, text, cvPoint(10, 40), CV_RGB(0,200,0));
+		th_put_text(frame, text, cvPoint(10, 40), CV_RGB(0,200,0), 0.5);
 		sprintf(text, "Avg Lum=%.0f", th_avg(avgColor.val, 3));
-		th_put_text(frame, text, cvPoint(10, 60), CV_RGB(0,200,0));
+		th_put_text(frame, text, cvPoint(10, 60), CV_RGB(0,200,0), 0.5);
 
 		cvShowImage("live camera feed", frame);
 
@@ -266,7 +203,8 @@ void autoWB() {
 
 		if (GATE && (key == '+' || key == '-' || key == '1' || key == '2')) {
 			GATE = 0;
-			th_set_camera_params(0, 0, 0, exp, gain, 0xff, 0xff, 0xff);
+			// TODO: Camera Control
+			//th_set_camera_params(0, 0, 0, exp, gain, 0xff, 0xff, 0xff);
 			cvReleaseCapture(&capture);
 			capture = cvCaptureFromCAM(CAM_TO_USE);
 			usleep(10000);

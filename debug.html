@@ -8,6 +8,10 @@
 			{			
 				/////// show calibration process
 				var table = document.createElement("table");
+
+				var row = document.createElement("tr");
+				addToRowEx('CREATED: ' + time,3, row);
+				table.appendChild(row);
 				// display diff generation process
 				for(var i=0; i<originals.length; i++) {
 					var row = document.createElement("tr");
@@ -30,9 +34,12 @@
 				// show final contour
 				addToRow(getImage(finaldiff[0]),row);
 				// show color estimation
-				text ='<font class="cell">Estimated:' + getColorDiv(estimatedColor);
-				text+='Assigned:' + getColorDiv(assignedColor)+'</font>';
+				text ='<font class="cell">Estimated:' + getColorDiv(estimatedColor,estimated_hue);
+				text+='Assigned:'+ getColorDiv(assignedColor, assigned_hue)+'</font>';
 				addToRow(text, row);
+				table.appendChild(row);
+				var row = document.createElement("tr");
+				addToRowEx('Allowed HUE difference: ' + allowed_hue_difference,2, row);
 				table.appendChild(row);
 				document.getElementById("estimation_target").appendChild(table);
 
@@ -51,7 +58,7 @@
 				}
 				table.appendChild(row);
 				document.getElementById("filter_target").appendChild(table);
-								
+							
 				/////// show extended error/info log
 				var table = document.createElement("table");
 				for(var i=0; i<log_table.length; i++) {
@@ -70,8 +77,34 @@
 					addToRow(getCellText('-- empty --'), row, 'log');
 					table.appendChild(row);
 				}
-				
 				document.getElementById("log_target").appendChild(table);
+				
+				//setTimeout(updateLiveFeed,1000);
+				updateLiveFeed();
+			}
+			
+			function updateLiveFeed()
+			{
+				/////// show life feed
+				var target = document.getElementById("live_target");
+				
+				if(target.lastChild.nodeName=="TABLE"){
+					target.removeChild(target.lastChild);
+				}
+				
+				var img = '--not set --';
+				try{
+					img=livefeed;
+				}catch(e){/* don't care it is not defined*/}
+					
+				var liveImage = getImage(img+'?' + (new Date()).getTime());
+				var table = document.createElement("table");
+				var row = document.createElement("tr");
+				addToRow(liveImage, row);
+				table.appendChild(row);
+				target.appendChild(table);
+
+				setTimeout(updateLiveFeed,1000);
 			}
 
 			function getResultText(text)
@@ -89,17 +122,25 @@
 				return '<font class="cell">'+text+'</font>';
 			}
 			
-			function addToRow(img, row)
+			function addToRow(val, row)
 			{
 				var cell = document.createElement("td");
-				cell.innerHTML = img;
+				cell.innerHTML = val;
 				row.appendChild(cell);
 			}
 			
-			function addToRow(img, row, cssclass)
+			function addToRowEx(val, span, row)
 			{
 				var cell = document.createElement("td");
-				cell.innerHTML = img;
+				cell.innerHTML = val;
+				cell.setAttribute('colspan', span);
+				row.appendChild(cell);
+			}
+			
+			function addToRow(val, row, cssclass)
+			{
+				var cell = document.createElement("td");
+				cell.innerHTML = val;
 				cell.setAttribute('class', cssclass);
 				row.appendChild(cell);
 			}
@@ -136,9 +177,9 @@
 				return document.body.scrollTop || document.documentElement.scrollTop;
 			}
 			
-			function getColorDiv(color)
+			function getColorDiv(color, hue)
 			{
-				return '<div style="background-color:#'+color+';">0x'+color+'</div>';
+				return '<div style="background-color:#'+color+';">RGB:'+color+' / HUE:'+hue+'</div>';
 			}
 			
 		</script>
@@ -162,6 +203,10 @@
 
 			<div id="log_target">
 				<h3>Extended logging information</h3>
+			</div>
+			
+			<div id="live_target">
+				<h3>Live feed</h3>
 			</div>
 		</div>
 		

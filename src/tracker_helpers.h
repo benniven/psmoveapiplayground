@@ -9,7 +9,7 @@
 
 #define th_odd(x) (((x)/2)*2+1)
 #define th_black cvScalarAll(0x0)
-#define th_white cvScalarAll(0xFF)
+#define th_white cvScalar(0xFF,0xFF,0xFF,0)
 #define th_green cvScalar(0,0xff,0,0)
 #define th_red cvScalar(0,0,0xff,0)
 #define th_blue cvScalar(0xff,0,0,0)
@@ -31,10 +31,8 @@ int th_create_mem_storage(CvMemStorage** stor, int block_size);
 int th_create_hist(CvHistogram** hist, int dims, int* sizes, int type,
 		float** ranges, int uniform);
 
-void th_put_text(IplImage* img, const char* text, CvPoint p, CvScalar color);
-IplImage* th_plot_hist(CvHistogram* hist, int bins, const char* windowName,
-		CvScalar lineColor);
-//IplImage* cvhPlotHistogram(CvHistogram* hist, int bins, const char* windowName, CvScalar lineColor, IplImage* in);
+void th_put_text(IplImage* img, const char* text, CvPoint p, CvScalar color, float scale);
+IplImage* th_plot_hist(CvHistogram* hist, int bins, const char* windowName, CvScalar lineColor);
 
 // simly saves a CvArr* on the filesystem
 int th_save_jpg(const char* path, const CvArr* image, int quality);
@@ -53,17 +51,6 @@ void th_wait(char c);
 void th_wait_move_button(PSMove* move, int button);
 int th_move_button(PSMove* move, int button);
 
-// querys a frame from the defined capture and waits for "useconds" microseconds before returning
-IplImage* th_query_frame(CvCapture* cap);
 void th_equalize_image(IplImage* img);
-
-// functions used to modify the parameters of the camera.
-// in windows, this is currently implemented by modifying regestry values
-// capture device needs to be recreated in order to use the new values
-void th_set_camera_params(int AutoAEC, int AutoAGC, int AutoAWB, int Exposure,
-		int Gain, int WhiteBalanceB, int WhiteBalanceG, int WhiteBalanceR);
-void th_backup_camera_params();
-void th_restore_camera_params();
-
 #endif // TRACKER_HELPERS_H
 
