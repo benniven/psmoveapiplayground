@@ -46,6 +46,7 @@
 #define ROIS 5                   // the number of levels of regions of interest (roi)
 #define CALIB_MIN_SIZE 100		 // minimum size of the estimated glowing sphere during calibration process
 #define CALIB_SIZE_STD 10	     // maximum standard deviation (in %) of the glowing spheres found during calibration process
+#define CALIB_MAX_DIST 30		 // minimum size of the estimated glowing sphere during calibration process
 struct _PSMoveTracker {
 	int cam; // the camera to use
 	//CvCapture* capture; // the camera device opened for capture
@@ -54,7 +55,6 @@ struct _PSMoveTracker {
 	int exposure; // the exposure to use
 	IplImage* roiI[ROIS]; // array of images for each level of roi (colored)
 	IplImage* roiM[ROIS]; // array of images for each level of roi (greyscale)
-	CvMemStorage* storage; // data structure used to hold contours found by "cvFindContours"
 	IplConvKernel* kCalib; // kernel used for morphological operations during calibration
 	CvScalar rHSV; // the range of the color filter
 	TrackedController* controllers; // a pointer to a linked list of connected controllers
@@ -129,7 +129,7 @@ int psmove_tracker_update_controller2(PSMoveTracker* tracker, TrackedController*
  */
 void psmove_tracker_draw_tracking_stats(PSMoveTracker* tracker, TrackedController* tc);
 
-void psmove_tracker_biggest_contour(CvArr* img, CvMemStorage* storage, CvSeq** resContour, float* resSize);
+void psmove_tracker_biggest_contour(IplImage* img, CvSeq** resContour, float* resSize);
 
 PSMoveTracker *
 psmove_tracker_new() {
@@ -148,7 +148,7 @@ psmove_tracker_new() {
 	// start the video capture device for tracking
 	t->cc = camera_control_new();
 
-	camera_control_read_calibration(t->cc, "IntrinsicsPSMove.xml","DistortionPSMove.xml");
+	camera_control_read_calibration(t->cc, "IntrinsicsPSMove.xml", "DistortionPSMove.xml");
 
 	// use static exposure
 	t->exposure = 2051;
@@ -177,7 +177,6 @@ psmove_tracker_new() {
 	}
 
 	t->kCalib = cvCreateStructuringElementEx(5, 5, 3, 3, CV_SHAPE_RECT, 0x0);
-	t->storage = cvCreateMemStorage(0);
 	return t;
 }
 
@@ -251,7 +250,7 @@ enum PSMoveTracker_Status psmove_tracker_enable_with_color(PSMoveTracker *tracke
 	// find the biggest contour
 	float sizeBest = 0;
 	CvSeq* contourBest = 0x0;
-	psmove_tracker_biggest_contour(diffs[0], t->storage, &contourBest, &sizeBest);
+	psmove_tracker_biggest_contour(diffs[0], &contourBest, &sizeBest);
 
 	// use only the biggest contour for the following color estimation
 	cvSet(diffs[0], th_black, 0x0);
@@ -288,27 +287,40 @@ enum PSMoveTracker_Status psmove_tracker_enable_with_color(PSMoveTracker *tracke
 	th_plus(hsv_color.val, t->rHSV.val, max.val, 3);
 	// for each image (where the sphere was lit)
 
+	CvPoint firstPosition = cvPoint(-9999, 9999);
 	for (i = 0; i < BLINKS; i++) {
 		// convert to HSV
 		cvCvtColor(images[i], images[i], CV_BGR2HSV);
 		// apply color filter
 		cvInRangeS(images[i], min, max, mask);
 
+		// use morphological operations to further remove noise
+		//cvErode(mask,mask, t->kCalib, 1);
+		//cvDilate(mask,mask, t->kCalib, 1);
+
 		psmove_html_trace_image_at(mask, i, "filtered");
-		psmove_tracker_biggest_contour(mask, t->storage, &contourBest, &sizeBest);
+		psmove_tracker_biggest_contour(mask, &contourBest, &sizeBest);
 
 		// there may be only a single contour in this picture with at least 100px size
 		sizes[i] = 0;
-		if (contourBest != 0x0)
-			sizes[i] = sizeBest; //cvContourArea(contour, CV_WHOLE_SEQ, 0);
+		float dist = 9999;
+		CvRect bBox;
+		if (contourBest) {
+			bBox = cvBoundingRect(contourBest, 0);
+			if (i == 0) {
+				firstPosition = cvPoint(bBox.x, bBox.y);
+			}
+			dist = sqrt(pow(firstPosition.x - bBox.x, 2) + pow(firstPosition.y - bBox.y, 2));
+			sizes[i] = sizeBest;
+		}
 
 		// check for errors (no contour, more than one contour, or contour too small)
 		if (contourBest == 0x0) {
 			psmove_html_trace_array_item_at(i, "contours", "no contour");
-			//}else if (contour->h_next != 0x0 || contour->h_prev != 0x0) {
-			//		psmove_html_trace_array_item_at(i, "contours", "too many");
 		} else if (sizes[i] <= CALIB_MIN_SIZE) {
 			psmove_html_trace_array_item_at(i, "contours", "too small");
+		} else if (dist >= CALIB_MAX_DIST) {
+			psmove_html_trace_array_item_at(i, "contours", "too far away");
 		} else {
 			psmove_html_trace_array_item_at(i, "contours", "OK");
 			valid_countours++;
@@ -316,40 +328,45 @@ enum PSMoveTracker_Status psmove_tracker_enable_with_color(PSMoveTracker *tracke
 
 	}
 
-	cvClearMemStorage(t->storage);
-
 	// clean up all temporary images
 	for (i = 0; i < BLINKS; i++) {
 		cvReleaseImage(&images[i]);
 		cvReleaseImage(&diffs[i]);
 	}
 
+	int CHECK_HAS_ERRORS = 0;
+	// check if sphere was found in each BLINK image
 	if (valid_countours < BLINKS) {
 		psmove_html_trace_log_entry("ERROR", "The sphere could not be found in all images.");
-		return Tracker_CALIBRATION_ERROR;
+		CHECK_HAS_ERRORS++;
 	}
 
-	// check if the size of the found contours are near to each other
+	// check if the size of the found contours are similar
 	double stdSizes = sqrt(th_var(sizes, BLINKS));
-	if (stdSizes < (th_avg(sizes, BLINKS) * 1.0 / CALIB_SIZE_STD)) {
-		// insert to list
-		TrackedController* itm = tracked_controller_insert(&tracker->controllers, move);
-		// set current color
-		itm->dColor = cvScalar(b, g, r, 0);
-		// set estimated color
-		itm->eColor = color;
-		itm->eColorHSV = hsv_color;
-		itm->roi_x = 0;
-		itm->roi_y = 0;
-		itm->roi_level = 0;
-		// set the state of the available colors
-		if (tracked_color != 0x0)
-			tracked_color->is_used = 1;
-		return Tracker_CALIBRATED;
+	printf("stdSizes: %f   vs   %f \n", stdSizes, th_avg(sizes, BLINKS) / 100.0);
+	if (stdSizes >= (th_avg(sizes, BLINKS) / 100.0 * CALIB_SIZE_STD)) {
+		psmove_html_trace_log_entry("ERROR", "The spheres found differ too much in size.");
+		CHECK_HAS_ERRORS++;
 	}
 
-	psmove_html_trace_log_entry("ERROR", "The spheres found differ too much in size.");
-	return Tracker_CALIBRATION_ERROR;
+
+	if (CHECK_HAS_ERRORS)
+		return Tracker_CALIBRATION_ERROR;
+
+	// insert to list
+	TrackedController* itm = tracked_controller_insert(&tracker->controllers, move);
+	// set current color
+	itm->dColor = cvScalar(b, g, r, 0);
+	// set estimated color
+	itm->eColor = color;
+	itm->eColorHSV = hsv_color;
+	itm->roi_x = 0;
+	itm->roi_y = 0;
+	itm->roi_level = 0;
+	// set the state of the available colors
+	if (tracked_color != 0x0)
+		tracked_color->is_used = 1;
+	return Tracker_CALIBRATED;
 }
 
 int psmove_tracker_get_color(PSMoveTracker *tracker, PSMove *move, unsigned char *r, unsigned char *g, unsigned char *b) {
@@ -414,7 +431,7 @@ int psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController* 
 
 		float sizeBest = 0;
 		CvSeq* contourBest = 0x0;
-		psmove_tracker_biggest_contour(roi_m, t->storage, &contourBest, &sizeBest);
+		psmove_tracker_biggest_contour(roi_m, &contourBest, &sizeBest);
 
 		if (contourBest) {
 			sphere_found = 1;
@@ -485,6 +502,7 @@ int psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController* 
 	return sphere_found;
 }
 
+CvMemStorage* fmc_Storage;
 int psmove_tracker_update_controller2(PSMoveTracker *tracker, TrackedController* tc) {
 	PSMoveTracker* t = tracker;
 	int i = 0;
@@ -502,62 +520,64 @@ int psmove_tracker_update_controller2(PSMoveTracker *tracker, TrackedController*
 		// cut out the roi!
 		cvSetImageROI(t->frame, cvRect(tc->roi_x, tc->roi_y, roi_i->width, roi_i->height));
 		cvCvtColor(t->frame, roi_i, CV_BGR2HSV);
+
 		// apply color filter
 		cvInRangeS(roi_i, min, max, roi_m);
 
 		float sizeBest = 0;
 		CvSeq* contourBest = 0x0;
-		psmove_tracker_biggest_contour(roi_m, t->storage, &contourBest, &sizeBest);
+		IplImage* clone = cvCloneImage(roi_m);
+		psmove_tracker_biggest_contour(roi_m, &contourBest, &sizeBest);
 
 		if (contourBest) {
 			sphere_found = 1;
 			CvMoments mu;
 			CvRect br = cvBoundingRect(contourBest, 0);
 
-			// apply color filter
-			cvInRangeS(roi_i, min, max, roi_m);
-			cvSmooth(roi_m, roi_m, CV_GAUSSIAN, 3, 3, 0, 0);
-			// whenn calling "cvFindContours", the original image is partly consumed -> restoring the contour in the binary image
-			//cvDrawContours(roi_m, best, th_white, th_white, -1, CV_FILLED, 8, cvPoint(0, 0));
+			// restore the biggest contour
+			cvSet(roi_m, th_black, 0x0);
+			cvDrawContours(roi_m, contourBest, th_white, th_white, -1, CV_FILLED, 8, cvPoint(0, 0));
+			cvSmooth(roi_m, roi_m, CV_GAUSSIAN, 7, 7, 0, 0);
 
-			// calucalte image-moments to estimate the center off mass (x/y position of the blob)
-			cvSetImageROI(roi_m, br);
+			// calucalte image-moments to estimate the correct ROI
 			cvMoments(roi_m, &mu, 0);
-			cvResetImageROI(roi_m);
 			CvPoint p = cvPoint(mu.m10 / mu.m00, mu.m01 / mu.m00);
-			tc->x = p.x + tc->roi_x + br.x;
-			tc->y = p.y + tc->roi_y + br.y;
-			tc->r = sqrt(cvCountNonZero(roi_m) / th_PI);
-/*
-			IplImage* clone = cvCloneImage(roi_m);
-			cvSet(clone, th_black, 0);
-			cvCircle(clone, cvPoint(p.x + br.x, p.y + br.y), tc->r, th_white, CV_FILLED, 8, 0);
-			if (tc->r > 20) {
-				// use adaptive color detection
-				// remove outliers
-				// estimate new color
-				CvScalar newColor = cvAvg(t->frame, clone);
-				th_plus(tc->eColor.val, newColor.val, tc->eColor.val, 3);
-				th_mul(tc->eColor.val, 0.5, tc->eColor.val, 3);
-				tc->eColorHSV = th_brg2hsv(tc->eColor);
+			tc->x = p.x + tc->roi_x;
+			tc->y = p.y + tc->roi_y;
+			tc->r = th_max(br.width,br.height) / 2;
+
+			// DEBUG ONLY
+			cvCircle(t->frame, p, tc->r, th_green, 1, 8, 0);
+
+			cvSmooth(roi_m, roi_m, CV_GAUSSIAN, 5, 5, 0, 0);
+			th_create_mem_storage(&fmc_Storage, 0);
+
+			CvSeq* results = cvHoughCircles(roi_m, fmc_Storage, CV_HOUGH_GRADIENT, 2, roi_m->width / 2, 10, 20, tc->r * 1.0, tc->r * 2.5);
+			for (i = 0; i < results->total; i++) {
+				float* p = (float*) cvGetSeqElem(results, i);
+				CvPoint pt = cvPoint(cvRound(p[0]), cvRound(p[1]));
+				cvCircle(t->frame, pt, cvRound(p[2]), th_red, 1, 8, 0);
 			}
-			cvNot(clone, clone);
 
-			cvSet(roi_m, th_black, clone);
-			cvReleaseImage(&clone);
-			//  --- DEBUG ONLY   -----
-			cvSetImageCOI(t->frame, 1);
-			cvCopy(roi_m, t->frame, 0);
+			/*
+			 IplImage* clone = cvCloneImage(roi_m);
+			 cvSet(clone, th_black, 0);
+			 cvCircle(clone, cvPoint(p.x + br.x, p.y + br.y), tc->r, th_white, CV_FILLED, 8, 0);
+			 if (tc->r > 20) {
+			 // use adaptive color detection
+			 // remove outliers
+			 // estimate new color
+			 CvScalar newColor = cvAvg(t->frame, clone);
+			 th_plus(tc->eColor.val, newColor.val, tc->eColor.val, 3);
+			 th_mul(tc->eColor.val, 0.5, tc->eColor.val, 3);
+			 tc->eColorHSV = th_brg2hsv(tc->eColor);
+			 }
+			 cvNot(clone, clone);
 
-			cvSetImageCOI(t->frame, 2);
-			cvCopy(roi_m, t->frame, 0);
+			 cvSet(roi_m, th_black, clone);
+			 cvReleaseImage(&clone);
+			 */
 
-			cvSetImageCOI(t->frame, 3);
-			cvCopy(roi_m, t->frame, 0);
-
-			cvSetImageCOI(t->frame, 0);
-			//  --- DEBUG ONLY   -----
-			*/
 			// update the future roi box
 			br.width = th_max(br.width, br.height) * 2;
 			br.height = br.width;
@@ -574,7 +594,7 @@ int psmove_tracker_update_controller2(PSMoveTracker *tracker, TrackedController*
 			tc->roi_x = tc->x - roi_i->width / 2;
 			tc->roi_y = tc->y - roi_i->height / 2;
 
-			// assure thate the roi is within the target image
+			// assure that the roi is within the target image
 			psmove_tracker_fix_roi(tc, roi_i->width, roi_i->height, t->roiI[0]->width, t->roiI[0]->height);
 		}
 		cvResetImageROI(t->frame);
@@ -841,8 +861,8 @@ void psmove_tracker_draw_tracking_stats(PSMoveTracker* tracker, TrackedControlle
 	sprintf(text, "dist: %.2fmm", distance);
 	th_put_text(frame, text, cvPoint(tc->roi_x, tc->roi_y + vOff - 25), c, textSmall);
 
-	cvCircle(frame, p, 6, ic, 2, 8, 0);
-	cvCircle(frame, p, tc->r, th_white, 1, 8, 0);
+	//cvCircle(frame, p, 6, ic, 2, 8, 0);
+	//cvCircle(frame, p, tc->r, th_green, 1, 8, 0);
 
 	// every second save a debug-image to the filesystem
 	time_t now = time(0);
@@ -852,9 +872,13 @@ void psmove_tracker_draw_tracking_stats(PSMoveTracker* tracker, TrackedControlle
 	}
 }
 
-void psmove_tracker_biggest_contour(CvArr* img, CvMemStorage* storage, CvSeq** resContour, float* resSize) {
+void psmove_tracker_biggest_contour(IplImage* img, CvSeq** resContour, float* resSize) {
 	CvSeq* contour;
-	cvFindContours(img, storage, &contour, sizeof(CvContour), CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE, cvPoint(0, 0));
+	CvMemStorage* stor = cvCreateMemStorage(0);
+	*resSize = 0;
+	*resContour = 0;
+	cvFindContours(img, stor, &contour, sizeof(CvContour), CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE, cvPoint(0, 0));
+
 	for (; contour != 0x0; contour = contour->h_next) {
 		float f = cvContourArea(contour, CV_WHOLE_SEQ, 0);
 		if (f > *resSize) {
@@ -862,5 +886,6 @@ void psmove_tracker_biggest_contour(CvArr* img, CvMemStorage* storage, CvSeq** r
 			*resContour = contour;
 		}
 	}
-	cvClearMemStorage(storage);
+	cvClearMemStorage(stor);
+	cvReleaseMemStorage(&stor);
 }
