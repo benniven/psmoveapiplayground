@@ -22,6 +22,7 @@ struct _CameraControl {
 	CLEyeCameraInstance camera;
 	IplImage* frame;
 	IplImage* frame3ch;
+	IplImage* frame3chUndistort;
 	PBYTE pCapBuffer;
 #else
 	char device[256];	// used to open the camera on linux
@@ -40,18 +41,21 @@ struct _CameraControl {
 	int contrast;   // value range [0-0xFFFF]
 	int brightness; // value range [0-0xFFFF]
 
+	IplImage* mapx;
+	IplImage* mapy;
 };
 
+#ifdef WIN32
 void cc_backup_sytem_settings_win(CameraControl* cc, const char* file);
-void cc_backup_sytem_settings_linux(CameraControl* cc, const char* file);
 void cc_restore_sytem_settings_win(CameraControl* cc, const char* file);
-void cc_restore_sytem_settings_linux(CameraControl* cc, const char* file);
 void cc_set_parameters_win(CameraControl* cc, int autoE, int autoG, int autoWB, int exposure, int gain, int wbRed, int wbGreen, int wbBlue, int contrast,
 		int brightness);
+#else
+void cc_backup_sytem_settings_linux(CameraControl* cc, const char* file);
+void cc_restore_sytem_settings_linux(CameraControl* cc, const char* file);
 void cc_set_parameters_linux(CameraControl* cc, int autoE, int autoG, int autoWB, int exposure, int gain, int wbRed, int wbGreen, int wbBlue, int contrast,
 		int brightness);
-
-void cc_init_camera_linux(CameraControl* cc, int resX, int resY, int fps);
+#endif
 
 void cc_init_members(CameraControl* cc);
 
@@ -114,9 +118,39 @@ void cc_init_members(CameraControl* cc) {
 	cc->wb_blue = 0;
 	cc->contrast = 0;
 	cc->brightness = 0;
+
+	cc->mapx = 0;
+	cc->mapy = 0;
+}
+
+void camera_control_read_calibration(CameraControl* cc, char* intrinsicsFile, char* distortionFile) {
+	CvMat *intrinsic = (CvMat*) cvLoad(intrinsicsFile, 0, 0, 0);
+	CvMat *distortion = (CvMat*) cvLoad(distortionFile, 0, 0, 0);
+
+	if (cc->mapx != 0x0)
+		cvReleaseImage(&cc->mapx);
+	if (cc->mapy != 0x0)
+		cvReleaseImage(&cc->mapy);
+
+	printf("\n%s\n", "### Trying to read camera calibration...");
+	if (intrinsic != 0 && distortion != 0) {
+		if (cc->frame3chUndistort == 0x0)
+			cc->frame3chUndistort = cvCloneImage(camera_control_query_frame(cc));
+
+		cc->mapx = cvCreateImage(cvSize(640, 480), IPL_DEPTH_32F, 1);
+		cc->mapy = cvCreateImage(cvSize(640, 480), IPL_DEPTH_32F, 1);
+		cvInitUndistortMap(intrinsic, distortion, cc->mapx, cc->mapy);
+
+		printf("%s\n", "OK");
+	} else {
+		printf("%s\n", "Warning");
+		printf("%s\n", "--> Unable to read camera calibration files.\n");
+		printf("--> Make sure that both \"%s\" and \"%s\" exist.\n", intrinsicsFile, distortionFile);
+	}
 }
 
 IplImage* camera_control_query_frame(CameraControl* cc) {
+	IplImage* retVal;
 #ifdef WIN32
 	// assign buffer-pointer to address of buffer
 	cvGetRawData(cc->frame, &cc->pCapBuffer, 0, 0);
@@ -128,10 +162,20 @@ IplImage* camera_control_query_frame(CameraControl* cc) {
 	CvArr** dst = (CvArr**) &cc->frame3ch;
 	cvMixChannels(src, 1, dst, 1, from_to, 3);
 	// return image
-	return cc->frame3ch;
+	retVal = cc->frame3ch;
 #else
-	return cvQueryFrame(cc->capture);
+	retVal= cvQueryFrame(cc->capture);
 #endif
+
+	//IplImage *t = cvCloneImage(retv);
+	//cvShowImage("Calibration", image); // Show raw image
+	// undistort image
+	if (cc->mapx != 0x0 && cc->mapy != 0x0) {
+		cvRemap(retVal, cc->frame3chUndistort, cc->mapx, cc->mapy, CV_INTER_LINEAR + CV_WARP_FILL_OUTLIERS, cvScalarAll(0));
+		retVal = cc->frame3chUndistort;
+	}
+
+	return retVal;
 }
 
 void camera_control_backup_sytem_settings(CameraControl* cc, const char* file) {
@@ -374,8 +418,4 @@ void cc_set_parameters_linux(CameraControl* cc, int autoE, int autoG, int autoWB
 		v4l2_close(fd);
 	}
 #endif
-}
-
-void cc_init_camera_linux(CameraControl* cc, int resX, int resY, int fps){
-
 }

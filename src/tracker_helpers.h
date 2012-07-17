@@ -16,6 +16,7 @@
 #define th_min(x,y) ((x)<(y)?(y):(x))
 #define th_max(x,y) ((x)<(y)?(x):(y))
 #define th_scalar_to_rgb_int(c)(((int)(c).val[2])<<16 && ((int)(c).val[1])<<8 && ((int)(c).val[0]))
+#define th_PI 3.14159265358979
 
 // some basic statistical functions on arrays
 double th_var(double* src, int len);
@@ -23,6 +24,7 @@ double th_avg(double* src, int len);
 double th_magnitude(double* src, int len);
 void th_minus(double* l, double* r, double* result, int len);
 void th_plus(double* l, double* r, double* result, int len);
+void th_mul(double* array, double f, double* result, int len);
 
 // only creates the image/storage, if it does not already exist, or has different properties (size, depth, channels, blocksize ...)
 // returns (1: if image/storage is created) (0: if nothing has been done)

@@ -49,7 +49,7 @@ struct _TrackedController {
 	//CvRect roi; // this saves the current region of interest
 	int roi_level; // the current index for the level of ROI
 
-	float x,y,z;
+	float x,y,r;
 	TrackedController* next;
 };
 

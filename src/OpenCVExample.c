@@ -10,6 +10,8 @@
 #include "opencv2/highgui/highgui_c.h"
 #include "opencv2/imgproc/imgproc_c.h"
 
+#include "opencv2/calib3d/calib3d.hpp"
+
 #include "tracker_helpers.h"
 #include "OpenCVMoveAPI.h"
 #include "high_precision_timer.h"
@@ -21,41 +23,224 @@
 /* Define which camera to use (zero-based index or CV_CAP_ANY) */
 #define CAM_TO_USE 1
 
-void calibrate();
+void startTracker();
 void videoHist();
 void autoWB();
+
+void cameraCalibration();
+
 PSMove* connectController();
 
 int main(int arg, char** args) {
-	calibrate();
+	startTracker();
+	//cameraCalibration();
 	return 0;
 }
 
-void calibrate() {
-	printf("### Trying to init PSMove:\n");
-	PSMove* controller = connectController();
-	printf("### Trying to init PSMoveTracker:\n");
-	PSMoveTracker* tracker = psmove_tracker_new();
+int n_boards = 0;
+int board_w;
+int board_h;
 
-	printf("### tracker & controller initialized\n");
-	psmove_set_leds(controller, 0xff, 0, 0);
-	psmove_update_leds(controller);
+void cameraCalibration() {
+	board_w = 5; // Board width in squares
+	board_h = 8; // Board height
+	n_boards = 8; // Number of boards
+	int board_n = board_w * board_h;
+	CvSize board_sz = cvSize(board_w, board_h);
+	CameraControl* cc = camera_control_new();
 
-	IplImage* frame;
-	unsigned char r, g, b;
+
+	//cvNamedWindow("Calibration", 0);
+	// Allocate Sotrage
+	CvMat* image_points = cvCreateMat(n_boards * board_n, 2, CV_32FC1);
+	CvMat* object_points = cvCreateMat(n_boards * board_n, 3, CV_32FC1);
+	CvMat* point_counts = cvCreateMat(n_boards, 1, CV_32SC1);
+	CvMat* intrinsic_matrix = cvCreateMat(3, 3, CV_32FC1);
+	CvMat* distortion_coeffs = cvCreateMat(5, 1, CV_32FC1);
+	IplImage *image;
+
+	CvPoint2D32f corners[board_n];
+	int i = 0;
+	int j = 0;
+
+	for (i = 0; i < board_n; i++)
+		corners[i] = cvPoint2D32f(0, 0);
+
+	int corner_count;
+	int successes = 0;
+	int step = 0;
+
+
+
 	while (1) {
-		int erg = psmove_tracker_enable(tracker, controller);
-		if (erg == Tracker_CALIBRATED) {
-			psmove_tracker_get_color(tracker, controller, &r, &g, &b);
+		cvWaitKey(10);
+		image = camera_control_query_frame(cc);
+		if (image)
 			break;
-		} else {
-			cvNamedWindow("unable to calibrate (ESC to retry)", 0);
-			th_wait_esc();
+	}
+	IplImage *gray_image = cvCreateImage(cvGetSize(image), 8, 1);
+
+	// Capture Corner views loop until we've got n_boards
+	// succesful captures (all corners on the board are found)
+	while (successes < n_boards) {
+		// Skp every board_dt frames to allow user to move chessboard
+		// skip a second to allow user to move the chessboard
+		image = camera_control_query_frame(cc); // Get next image
+		//if (frame++ % board_dt == 0)
+		{
+			// Find chessboard corners:
+			int found = cvFindChessboardCorners(image, board_sz, corners, &corner_count, CV_CALIB_CB_ADAPTIVE_THRESH | CV_CALIB_CB_FILTER_QUADS);
+			int key = cvWaitKey(1);
+
+			// Get subpixel accuracy on those corners
+			cvCvtColor(image, gray_image, CV_BGR2GRAY);
+			cvFindCornerSubPix(gray_image, corners, corner_count, cvSize(11, 11), cvSize(-1, -1), cvTermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
+
+			// Draw it
+			cvDrawChessboardCorners(image, board_sz, corners, corner_count, found);
+			char text[222];
+			sprintf(text, "calibration image %d/%d", successes, n_boards);
+			th_put_text(image, text, cvPoint(20, 20), th_white, 1.0);
+			cvShowImage("Calibration", image);
+
+			// If we got a good board, add it to our data
+			if (corner_count == board_n ) {
+				step = successes * board_n;
+				for (i = step, j = 0; j < board_n; ++i, ++j) {
+					CV_MAT_ELEM( *image_points, float, i, 0 ) = corners[j].x;
+					CV_MAT_ELEM( *image_points, float, i, 1 ) = corners[j].y;
+					CV_MAT_ELEM( *object_points, float, i, 0 ) = j / board_w;
+					CV_MAT_ELEM( *object_points, float, i, 1 ) = j % board_w;
+					CV_MAT_ELEM( *object_points, float, i, 2 ) = 0.0f;
+				}
+				CV_MAT_ELEM( *point_counts, int, successes, 0 ) = board_n;
+				successes++;
+			}
+
 		}
 	}
 
-	CvPoint p;
+	// Allocate matrices according to how many chessboards found
+	CvMat* object_points2 = cvCreateMat(successes * board_n, 3, CV_32FC1);
+	CvMat* image_points2 = cvCreateMat(successes * board_n, 2, CV_32FC1);
+	CvMat* point_counts2 = cvCreateMat(successes, 1, CV_32SC1);
 
+	// Transfer the points into the correct size matrices
+	for (i = 0; i < successes * board_n; ++i) {
+		CV_MAT_ELEM( *image_points2, float, i, 0) = CV_MAT_ELEM( *image_points, float, i, 0 );
+		CV_MAT_ELEM( *image_points2, float, i, 1) = CV_MAT_ELEM( *image_points, float, i, 1 );
+		CV_MAT_ELEM( *object_points2, float, i, 0) = CV_MAT_ELEM( *object_points, float, i, 0 );
+		CV_MAT_ELEM( *object_points2, float, i, 1) = CV_MAT_ELEM( *object_points, float, i, 1 );
+		CV_MAT_ELEM( *object_points2, float, i, 2) = CV_MAT_ELEM( *object_points, float, i, 2 );
+	}
+
+	for (i = 0; i < successes; ++i) {
+		CV_MAT_ELEM( *point_counts2, int, i, 0 ) = CV_MAT_ELEM( *point_counts, int, i, 0 );
+	}
+	cvReleaseMat(&object_points);
+	cvReleaseMat(&image_points);
+	cvReleaseMat(&point_counts);
+
+	// At this point we have all the chessboard corners we need
+	// Initiliazie the intrinsic matrix such that the two focal lengths
+	// have a ratio of 1.0
+
+	CV_MAT_ELEM( *intrinsic_matrix, float, 0, 0 ) = 1.0;
+	CV_MAT_ELEM( *intrinsic_matrix, float, 1, 1 ) = 1.0;
+
+	// Calibrate the camera
+	CvTermCriteria default_termination = cvTermCriteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 30, DBL_EPSILON);
+	cvCalibrateCamera2(object_points2, image_points2, point_counts2, cvGetSize(image), intrinsic_matrix, distortion_coeffs, NULL, NULL,
+			CV_CALIB_FIX_ASPECT_RATIO, default_termination);
+
+	// Save the intrinsics and distortions
+	CvAttrList empty_attribues = cvAttrList(0, 0);
+	cvSave("Intrinsics.xml", intrinsic_matrix, 0, 0, empty_attribues);
+	cvSave("Distortion.xml", distortion_coeffs, 0, 0, empty_attribues);
+
+	// Example of loading these matrices back in
+	CvMat *intrinsic = (CvMat*) cvLoad("Intrinsics.xml", 0, 0, 0);
+	CvMat *distortion = (CvMat*) cvLoad("Distortion.xml", 0, 0, 0);
+
+	image = camera_control_query_frame(cc);
+
+	// Build the undistort map that we will use for all subsequent frames
+	IplImage* mapx = cvCreateImage(cvGetSize(image), IPL_DEPTH_32F, 1);
+	IplImage* mapy = cvCreateImage(cvGetSize(image), IPL_DEPTH_32F, 1);
+	cvInitUndistortMap(intrinsic, distortion, mapx, mapy);
+
+	// Run the camera to the screen, now showing the raw and undistorted image
+	//cvNamedWindow("Undistort", 0);
+
+	//http://www.ovt.com/download_document.php?type=sensor&sensorid=80
+	float fovX, fovY, f, ar;
+	CvPoint2D64f p;
+	// 3948,2952
+	cvCalibrationMatrixValues(intrinsic, cvGetSize(image), 0, 0, &fovX, &fovY, &f, &p, &ar);
+
+	printf("fovX: %.2f°\n", fovX);
+	printf("fovY: %.2f°\n", fovY);
+	printf("f: %.2f°\n", f);
+	printf("pp: %.2f/%.2f°\n", p.x, p.y);
+	printf("aspect ration: %.2f°\n", ar);
+
+	while (image) {
+		IplImage *t = cvCloneImage(image);
+		cvShowImage("Calibration", image); // Show raw image
+		cvRemap(t, image, mapx, mapy, CV_INTER_LINEAR + CV_WARP_FILL_OUTLIERS, cvScalarAll(0)); // undistort image
+		cvReleaseImage(&t);
+		cvShowImage("Undistort", image); // Show corrected image
+
+		// Handle pause/unpause and esc
+		int c = cvWaitKey(15);
+		if (c == 'p') {
+			c = 0;
+			while (c != 'p' && c != 27) {
+				c = cvWaitKey(250);
+			}
+		}
+		if (c == 27)
+			break;
+		image = camera_control_query_frame(cc);
+	}
+}
+
+void startTracker() {
+	int i;
+	int numCtrls = psmove_count_connected();
+	PSMove* controllers[numCtrls];
+
+	printf("%s", "### Trying to init PSMoveTracker...");
+	PSMoveTracker* tracker = psmove_tracker_new();
+	printf("%s\n", "OK");
+	printf("### Found %d controllers.\n", numCtrls);
+
+	IplImage* frame;
+	unsigned char r, g, b;
+	int erg;
+
+	for (i = 0; i < numCtrls; i++) {
+		printf("### Trying to init Controller(%d)...\n", i);
+		controllers[i] = connectController(i);
+		printf("### Controller(%d): OK\n", i);
+
+		while (1) {
+			printf("### Trying to calibrate controller(%d)...", i);
+			erg = psmove_tracker_enable(tracker, controllers[i]);
+			if (erg == Tracker_CALIBRATED) {
+				printf("%s\n", "OK");
+				break;
+			} else {
+				printf("%s\n", "ERROR");
+				printf("--> Unable to calibrate controllers %d see 'debug.html' for details.\n", i);
+				cvNamedWindow("Unable to calibrate (ESC to retry)", 0);
+
+				th_wait_esc();
+			}
+		}
+
+	}
+	printf("### All Controllers enabled.\n");
 	// this seems to be a nice color
 	while (1) {
 		int key = (cvWaitKey(10) & 255);
@@ -64,34 +249,35 @@ void calibrate() {
 		frame = psmove_tracker_get_image(tracker);
 		if (!frame)
 			continue;
+		for (i = 0; i < numCtrls; i++) {
+			psmove_tracker_get_color(tracker, controllers[i], &r, &g, &b);
+			psmove_set_leds(controllers[i], r, g, b);
+			psmove_update_leds(controllers[i]);
 
-		psmove_set_leds(controller, r, g, b);
-		psmove_update_leds(controller);
+			psmove_tracker_get_position(tracker, controllers[i], 0, 0, 0);
+		}
 
-		psmove_tracker_update(tracker, controller);
-		psmove_tracker_get_position(tracker, controller, &p.x, &p.y, 0x0);
-
+		psmove_tracker_update(tracker, 0x0);
 		cvShowImage("live camera feed", frame);
 		//If ESC key pressed
 		if (key == 27)
 			break;
 	}
-	psmove_disconnect(controller);
+	for (i = 0; i < numCtrls; i++) {
+		psmove_disconnect(controllers[i]);
+	}
 }
 
-PSMove* connectController() {
+PSMove* connectController(int id) {
 	PSMove *move;
 	enum PSMove_Connection_Type ctype;
 	int i;
 
-	i = psmove_count_connected();
-	printf("Connected controllers: %d\n", i);
-
-	move = psmove_connect();
+	move = psmove_connect_by_id(id);
 
 	if (move == NULL) {
 		printf("Could not connect to default Move controller.\n"
-			"Please connect one via USB or Bluetooth.\n");
+				"Please connect one via USB or Bluetooth.\n");
 		exit(1);
 	}
 

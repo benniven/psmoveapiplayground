@@ -160,6 +160,7 @@ psmove_tracker_get_image(PSMoveTracker *tracker);
 
 /**
  * Grabs internally a new image from the camera.
+ * Should always be called before "psmove_tracker_update".
  *
  * tracker - A valid PSMoveTracker * instance
  *

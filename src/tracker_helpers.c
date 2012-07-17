@@ -45,10 +45,17 @@ void th_minus(double* l, double* r, double* result, int len) {
 	for (i = 0; i < len; i++)
 		result[i] = l[i] - r[i];
 }
+
 void th_plus(double* l, double* r, double* result, int len) {
 	int i;
 	for (i = 0; i < len; i++)
 		result[i] = l[i] + r[i];
+}
+
+void th_mul(double* array, double f, double* result, int len) {
+	int i;
+	for (i = 0; i < len; i++)
+		result[i] = array[i] *f;
 }
 
 int th_create_image(IplImage** img, CvSize s, int depth, int channels) {

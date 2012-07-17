@@ -44,6 +44,7 @@ CameraControl* camera_control_new_ex(GUID device);
 CameraControl* camera_control_new_ex(const char* device, int open_cv_device);
 #endif
 
+void camera_control_read_calibration(CameraControl* cc, char* intrinsicsFile, char* distortionFile);
 void camera_control_set_parameters(CameraControl* cc, int autoE, int autoG, int autoWB, int exposure, int gain, int wbRed, int wbGreen, int wbBlue, int contrast, int brightness);
 void camera_control_backup_sytem_settings(CameraControl* cc, const char* file);
 void camera_control_restore_sytem_settings(CameraControl* cc, const char* file);
