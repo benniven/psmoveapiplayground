@@ -34,20 +34,21 @@ tracked_controller_create() {
 
 	tc->move = 0x0;
 
-	tc->dColor = cvScalar(0,0,0,0);
-	tc->eColor = cvScalar(0,0,0,0);
-	tc->eColorHSV = cvScalar(0,0,0,0);
+	tc->dColor = cvScalar(0, 0, 0, 0);
+	tc->eColor = cvScalar(0, 0, 0, 0);
+	tc->eColorHSV = cvScalar(0, 0, 0, 0);
 
-	tc->roi_x=0;
-	tc->roi_y=0;
+	tc->roi_x = 0;
+	tc->roi_y = 0;
 	tc->roi_level = 0;
 
-	tc->x=0;
-	tc->y=0;
-	tc->r=0;
+	tc->x = 0;
+	tc->y = 0;
+	tc->r = 0;
+	tc->rs = 0;
 
-	tc->mx=0;
-	tc->my=0;
+	tc->mx = 0;
+	tc->my = 0;
 
 	tc->next = 0x0;
 	return tc;
@@ -64,7 +65,7 @@ void tracked_controller_release(TrackedController** tc, int whole_list) {
 			tmp = tmp->next;
 			free(del);
 		}
-		*tc=0x0;
+		*tc = 0x0;
 	}
 }
 
@@ -121,7 +122,7 @@ void tracked_controller_remove(TrackedController** head, PSMove* data) {
 			*head = delete->next;
 		}
 
-		tracked_controller_release(&delete,0);
+		tracked_controller_release(&delete, 0);
 	}
 }
 

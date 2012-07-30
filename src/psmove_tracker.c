@@ -447,10 +447,10 @@ int psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController* 
 			//cvDrawContours(roi_m, best, th_white, th_white, -1, CV_FILLED, 8, cvPoint(0, 0));
 
 			// use adaptive color detection
-			CvScalar newColor = cvAvg(t->frame, roi_m);
-			th_plus(tc->eColor.val, newColor.val, tc->eColor.val, 3);
-			th_mul(tc->eColor.val, 0.5, tc->eColor.val, 3);
-			tc->eColorHSV = th_brg2hsv(tc->eColor);
+			//CvScalar newColor = cvAvg(t->frame, roi_m);
+			//th_plus(tc->eColor.val, newColor.val, tc->eColor.val, 3);
+			//th_mul(tc->eColor.val, 0.5, tc->eColor.val, 3);
+			//tc->eColorHSV = th_brg2hsv(tc->eColor);
 
 			// calucalte image-moments to estimate the center off mass (x/y position of the blob)
 			cvSetImageROI(roi_m, br);
@@ -509,9 +509,7 @@ int psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController* 
 void dist(CvSeq* cont, IplImage* img, CvPoint* center, float* radius) {
 	int i, j, s;
 	float d = 0;
-
-	int c = 3;
-
+	int c = 1;
 	CvPoint m1[c];
 	CvPoint m2[c];
 	CvPoint2D32f m[c];
@@ -519,13 +517,12 @@ void dist(CvSeq* cont, IplImage* img, CvPoint* center, float* radius) {
 	CvPoint * p1;
 	CvPoint * p2;
 
-	int step = MAX(1,cont->total/10);
-
+	int step = MAX(1,cont->total/20);
 	float cd = 0;
-	for (i = 0; i < cont->total; i+=step) {
-		p1 = (CvPoint*)cvGetSeqElem(cont, i);
-		for (j = i + 1; j < cont->total; j+=step) {
-			p2 = (CvPoint*)cvGetSeqElem(cont, j);
+	for (i = 0; i < cont->total; i += step) {
+		p1 = (CvPoint*) cvGetSeqElem(cont, i);
+		for (j = i + 1; j < cont->total; j += step) {
+			p2 = (CvPoint*) cvGetSeqElem(cont, j);
 			cd = pow(p2->x - p1->x, 2) + pow(p2->y - p1->y, 2);
 			if (cd > d) {
 				d = cd;
@@ -535,7 +532,6 @@ void dist(CvSeq* cont, IplImage* img, CvPoint* center, float* radius) {
 				}
 				m1[0] = *p1;
 				m2[0] = *p2;
-
 			}
 		}
 	}
@@ -544,12 +540,12 @@ void dist(CvSeq* cont, IplImage* img, CvPoint* center, float* radius) {
 	fp1.x = 0;
 	fp1.y = 0;
 	for (s = 0; s < c; s++) {
-		m[s].x = 0.5*(m1[s].x + m2[s].x);
-		m[s].y = 0.5*(m1[s].y + m2[s].y);
+		m[s].x = 0.5 * (m1[s].x + m2[s].x);
+		m[s].y = 0.5 * (m1[s].y + m2[s].y);
 		fp1.x += m[s].x;
 		fp1.y += m[s].y;
 		d = th_dist_squared(m1[s],m2[s]);
-		cvLine(img, m1[s], m2[s], th_yellow, 1, 8, 0);
+		//cvLine(img, m1[s], m2[s], th_yellow, 1, 8, 0);
 	}
 
 	fp1.x = fp1.x / c;
@@ -557,13 +553,45 @@ void dist(CvSeq* cont, IplImage* img, CvPoint* center, float* radius) {
 	d = d / c;
 	center->x = (int) (fp1.x + 0.5);
 	center->y = (int) (fp1.y + 0.5);
-	*radius = sqrt(d);
-
-	printf("erg: %dx%d @ %f\n",center->x, center->y, *radius);
+	*radius = sqrt(d) / 2;
 }
 
-CvPoint oldMass;
-CvPoint oldCtr;
+CvPoint getBetterROICenter(TrackedController* tc, PSMoveTracker* t) {
+	CvPoint erg = cvPoint(-1, -1);
+	CvScalar min, max;
+	th_minus(tc->eColorHSV.val, t->rHSV.val, min.val, 3);
+	th_plus(tc->eColorHSV.val, t->rHSV.val, max.val, 3);
+
+	IplImage *roi_i = t->roiI[tc->roi_level];
+	IplImage *roi_m = t->roiM[tc->roi_level];
+
+	// cut out the roi!
+	cvSetImageROI(t->frame, cvRect(tc->roi_x, tc->roi_y, roi_i->width, roi_i->height));
+	cvCvtColor(t->frame, roi_i, CV_BGR2HSV);
+
+	// apply color filter
+	cvInRangeS(roi_i, min, max, roi_m);
+	cvSmooth(roi_i, roi_i, CV_GAUSSIAN, 5, 5, 0, 0);
+
+	float sizeBest = 0;
+	CvSeq* contourBest = 0x0;
+	psmove_tracker_biggest_contour(roi_m, t->storage, &contourBest, &sizeBest);
+	if (contourBest) {
+		cvSet(roi_m, th_black, 0x0);
+		cvDrawContours(roi_m, contourBest, th_white, th_white, -1, CV_FILLED, 8, cvPoint(0, 0));
+		// calucalte image-moments to estimate the correct ROI
+		CvMoments mu;
+		cvMoments(roi_m, &mu, 0);
+
+		erg = cvPoint(mu.m10 / mu.m00, mu.m01 / mu.m00);
+		erg.x = erg.x + tc->roi_x - roi_m->width / 2;
+		erg.y = erg.y + tc->roi_y - roi_m->height / 2;
+	}
+	cvClearMemStorage(t->storage);
+	cvResetImageROI(t->frame);
+	return erg;
+}
+
 int psmove_tracker_update_controller2(PSMoveTracker *tracker, TrackedController* tc) {
 	PSMoveTracker* t = tracker;
 	int i = 0;
@@ -578,19 +606,18 @@ int psmove_tracker_update_controller2(PSMoveTracker *tracker, TrackedController*
 		IplImage *roi_i = t->roiI[tc->roi_level];
 		IplImage *roi_m = t->roiM[tc->roi_level];
 
+		CvPoint nRoiCenter = getBetterROICenter(tc, tracker);
+		if (nRoiCenter.x != -1) {
+			tc->roi_x = nRoiCenter.x;
+			tc->roi_y = nRoiCenter.y;
+			psmove_tracker_fix_roi(tc, roi_i->width, roi_i->height, t->roiI[0]->width, t->roiI[0]->height);
+		}
+
 		// cut out the roi!
 		cvSetImageROI(t->frame, cvRect(tc->roi_x, tc->roi_y, roi_i->width, roi_i->height));
-
-		//cvShowImage("abefore", t->frame);
-		//cvSmooth(t->frame, roi_i, CV_BILATERAL, 0,0, 25, 10);
-		//cvSmooth(roi_i, t->frame, CV_BILATERAL, 3,0, 21, 21);
-		//cvShowImage("bfter",roi_i);
-
 		cvCvtColor(t->frame, roi_i, CV_BGR2HSV);
-
 		// apply color filter
 		cvInRangeS(roi_i, min, max, roi_m);
-
 		cvSmooth(roi_i, roi_i, CV_GAUSSIAN, 5, 5, 0, 0);
 
 		float sizeBest = 0;
@@ -619,7 +646,14 @@ int psmove_tracker_update_controller2(PSMoveTracker *tracker, TrackedController*
 
 			CvPoint c;
 			dist(contourBest, t->frame, &c, &tc->r);
-			printf("%.2fx%.2f   %dx%d\n", tc->x, tc->y, c.x+ tc->roi_x, c.y+ tc->roi_y);
+
+			float rDiff =abs(tc->rs - tc->r);
+			float rf = MIN(rDiff/4+0.05,1);
+
+			printf("rDiff: %.2f -> rf: %.2f\n", rDiff, rf);
+			tc->rs = tc->rs * (1-rf) + tc->r * rf;
+			tc->r = tc->rs;
+
 
 			float diff = th_dist(oldMCenter, newMCenter);
 			float f = MIN(diff / 7 + 0.05, 1);
@@ -629,15 +663,20 @@ int psmove_tracker_update_controller2(PSMoveTracker *tracker, TrackedController*
 
 			cvCircle(t->frame, cvPoint(tc->x - tc->roi_x, tc->y - tc->roi_y), tc->r, th_white, 1, 8, 0);
 			cvCircle(t->frame, p, th_max(br.width,br.height) / 2, th_green, 1, 8, 0);
-			cvShowImage("before", roi_m);
+			if (tc->next == 0x0) {
+				cvShowImage("l", roi_m);
+				cvShowImage("lx", t->frame);
+			} else {
+				cvShowImage("r", roi_m);
+				cvShowImage("rx", t->frame);
+			}
 
 			// update the future roi box
-			br.width = th_max(br.width, br.height) * 2;
+			br.width = th_max(br.width, br.height) * 3;
 			br.height = br.width;
 			for (i = 0; i < ROIS; i++) {
 				if (br.width > t->roiI[i]->width && br.height > t->roiI[i]->height)
 					break;
-
 				tc->roi_level = i;
 				// update easy accessors
 				roi_i = t->roiI[tc->roi_level];

@@ -46,6 +46,7 @@ struct _TrackedController {
 	int roi_level; 	 	// the current index for the level of ROI
 	float mx, my;		// x/y - Coordinates of center of mass of the blob
 	float x,y,r;		// x/y - Coordinates of the controllers sphere and its radius
+	float rs;			// a smoothed variant of the radius
 	TrackedController* next;
 };
 

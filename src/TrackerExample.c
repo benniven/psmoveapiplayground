@@ -58,6 +58,9 @@ int main(int arg, char** args) {
 	while (1) {
 		int key = (cvWaitKey(10) & 255);
 
+		if (key == 'p')
+			th_wait('p');
+
 		psmove_tracker_update_image(tracker);
 		frame = psmove_tracker_get_image(tracker);
 		if (!frame)
