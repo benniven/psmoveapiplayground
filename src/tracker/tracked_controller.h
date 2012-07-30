@@ -38,18 +38,14 @@ typedef struct _TrackedController TrackedController;
 
 struct _TrackedController {
 	PSMove* move;
-	// defined color
-	CvScalar dColor;
-	// estimated color
-	CvScalar eColor;
-	CvScalar eColorHSV;
 
-	int roi_x;
-	int roi_y;
-	//CvRect roi; // this saves the current region of interest
-	int roi_level; // the current index for the level of ROI
-
-	float x,y,r;
+	CvScalar dColor;	// defined color
+	CvScalar eColor;	// estimated color (BGR)
+	CvScalar eColorHSV; // estimated color (HSV)
+	int roi_x, roi_y;	// x/y - Coordinates of the ROI
+	int roi_level; 	 	// the current index for the level of ROI
+	float mx, my;		// x/y - Coordinates of center of mass of the blob
+	float x,y,r;		// x/y - Coordinates of the controllers sphere and its radius
 	TrackedController* next;
 };
 

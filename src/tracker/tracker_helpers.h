@@ -13,10 +13,13 @@
 #define th_green cvScalar(0,0xff,0,0)
 #define th_red cvScalar(0,0,0xff,0)
 #define th_blue cvScalar(0xff,0,0,0)
+#define th_yellow cvScalar(0,0xff,0xff,0)
 #define th_min(x,y) ((x)<(y)?(y):(x))
 #define th_max(x,y) ((x)<(y)?(x):(y))
 #define th_scalar_to_rgb_int(c)(((int)(c).val[2])<<16 && ((int)(c).val[1])<<8 && ((int)(c).val[0]))
 #define th_PI 3.14159265358979
+#define th_dist_squared(a,b) (pow((a).x-(b).x,2)+pow((a).y-(b).y,2))
+#define th_dist(a,b) (sqrt(pow((a).x-(b).x,2)+pow((a).y-(b).y,2)))
 
 // some basic statistical functions on arrays
 double th_var(double* src, int len);

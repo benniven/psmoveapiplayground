@@ -7,8 +7,8 @@
 #include "opencv2/highgui/highgui_c.h"
 #include "opencv2/core/core_c.h"
 #include "tracker_helpers.h"
-#include "iniparser/iniparser.h"
-#include "iniparser/dictionary.h"
+#include "../iniparser/iniparser.h"
+#include "../iniparser/dictionary.h"
 
 double th_var(double* src, int len) {
 	double f = 1.0 / (len - 1);

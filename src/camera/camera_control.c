@@ -17,8 +17,8 @@
 #endif
 
 struct _CameraControl {
+	int cameraID;
 #ifdef WIN32
-	GUID device;		// used to open the camera on windows
 	CLEyeCameraInstance camera;
 	IplImage* frame;
 	IplImage* frame3ch;
@@ -26,7 +26,6 @@ struct _CameraControl {
 	PBYTE pCapBuffer;
 #else
 	char device[256];	// used to open the camera on linux
-	int open_cv_device;
 	CvCapture* capture;
 #endif
 	// if a negative value is passed, that means don't touch
@@ -59,43 +58,21 @@ void cc_set_parameters_linux(CameraControl* cc, int autoE, int autoG, int autoWB
 
 void cc_init_members(CameraControl* cc);
 
-CameraControl* camera_control_new() {
+
+CameraControl* camera_control_new(int cameraID) {
+
+	CameraControl* cc = (CameraControl*) calloc(1, sizeof(CameraControl));
+	cc_init_members(cc);
+
 #ifdef WIN32
 	int cams = CLEyeGetCameraCount();
-	if (cams <= 0) {
+	if (cams <= cameraID) {
 		// TODO: outsource CRITICAL macro
-		//tracker_CRITICAL("there are no cl-eye cameras to open.");
+		//tracker_CRITICAL("there are no cl-eye camera with the given index.");
 	}
 	assert(cams);
-	GUID cguid = CLEyeGetCameraUUID(0);
-	return camera_control_new_ex(cguid);
-#else
-	return camera_control_new_ex("/dev/video0", CV_CAP_ANY);
-#endif
-}
-
-#ifndef WIN32
-CameraControl* camera_control_new_ex(const char* device, int open_cv_device) {
-	CameraControl* cc = (CameraControl*) calloc(1, sizeof(CameraControl));
-	sprintf(cc->device, "%s", device);
-	cc->open_cv_device=open_cv_device;
-	cc_init_members(cc);
-	cc->capture = cvCaptureFromCAM(open_cv_device);
-	cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_WIDTH, 640);
-	cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_HEIGHT, 480);
-	// not working
-	//cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FPS, 60);
-	return cc;
-}
-#endif
-
-#ifdef WIN32
-CameraControl* camera_control_new_ex(GUID device) {
-	CameraControl* cc = (CameraControl*) calloc(1, sizeof(CameraControl));
-	cc->device = device;
-	cc_init_members(cc);
-
-	cc->camera = CLEyeCreateCamera(device, CLEYE_COLOR_PROCESSED, CLEYE_VGA, 60);
+	GUID cguid = CLEyeGetCameraUUID(cameraID);
+	cc->camera = CLEyeCreateCamera(cguid, CLEYE_COLOR_PROCESSED, CLEYE_VGA, 60);
 	int w = 0;
 	int h = 0;
 	CLEyeCameraGetFrameDimensions(cc->camera, &w, &h);
@@ -103,9 +80,20 @@ CameraControl* camera_control_new_ex(GUID device) {
 	cc->frame = cvCreateImage(cvSize(w, h), IPL_DEPTH_8U, 4);
 	cc->frame3ch = cvCreateImage(cvSize(w, h), IPL_DEPTH_8U, 3);
 	CLEyeCameraStart(cc->camera);
+#else
+	sprintf(cc->device, "/dev/video%s", cc->cameraID);
+	cc->capture = cvCaptureFromCAM(cc->cameraID);
+	cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_WIDTH, 640);
+	cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_HEIGHT, 480);
+	// not working
+	//cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FPS, 60);
+#endif
+
+
+
 	return cc;
 }
-#endif
+
 
 void cc_init_members(CameraControl* cc) {
 	cc->auto_exp = 0;

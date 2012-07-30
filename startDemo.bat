@@ -1,4 +1,4 @@
 set PATH=%PATH%;.\lib
 
-".\Debug(WIN)\OpenCVExample.exe"
+".\Debug(WIN)\TrackerExample.exe"
 

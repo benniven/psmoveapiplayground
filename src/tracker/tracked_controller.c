@@ -46,6 +46,9 @@ tracked_controller_create() {
 	tc->y=0;
 	tc->r=0;
 
+	tc->mx=0;
+	tc->my=0;
+
 	tc->next = 0x0;
 	return tc;
 }

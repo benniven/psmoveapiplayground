@@ -3,7 +3,7 @@
 #include "opencv2/imgproc/imgproc_c.h"
 
 #include "OpenCVMoveAPI.h"
-#include "tracker_helpers.h"
+#include "../tracker/tracker_helpers.h"
 
 CvScalar findMoveColorP(char* b1, char* b2, int min_radius, int max_radius) {
 	IplImage* img1 = cvLoadImage(b1, 1);

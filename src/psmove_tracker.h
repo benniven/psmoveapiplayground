@@ -30,6 +30,7 @@
  **/
 
 #include "psmove.h"
+#include "opencv2/core/types_c.h"
 
 /* Defines the range of x/y values for the position getting, etc.. */
 #define PSMOVE_TRACKER_POSITION_X_MAX 640
@@ -56,7 +57,7 @@ enum PSMoveTracker_Status {
  * Returns a new PSMoveTracker * instance or NULL (indicates error)
  **/
 PSMoveTracker *
-psmove_tracker_new();
+psmove_tracker_new(int camera);
 
 
 /**

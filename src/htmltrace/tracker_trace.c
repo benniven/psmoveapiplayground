@@ -36,7 +36,7 @@
 #endif
 
 #include "tracker_trace.h"
-#include "../tracker_helpers.h"
+#include "../tracker/tracker_helpers.h"
 
 int TRACE_IMG_COUNT;
 #define TRACE_OUTPUT "debug.js"

@@ -37,12 +37,7 @@
 struct _CameraControl;
 typedef struct _CameraControl CameraControl;
 
-CameraControl* camera_control_new();
-#ifdef WIN32
-CameraControl* camera_control_new_ex(GUID device);
-#else
-CameraControl* camera_control_new_ex(const char* device, int open_cv_device);
-#endif
+CameraControl* camera_control_new(int cameraID);
 
 void camera_control_read_calibration(CameraControl* cc, char* intrinsicsFile, char* distortionFile);
 void camera_control_set_parameters(CameraControl* cc, int autoE, int autoG, int autoWB, int exposure, int gain, int wbRed, int wbGreen, int wbBlue, int contrast, int brightness);
