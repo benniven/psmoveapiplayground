@@ -35,6 +35,9 @@ tracked_controller_create() {
 	tc->move = 0x0;
 
 	tc->dColor = cvScalar(0, 0, 0, 0);
+	tc->eFColor = cvScalar(0, 0, 0, 0);
+	tc->eFColorHSV = cvScalar(0, 0, 0, 0);
+
 	tc->eColor = cvScalar(0, 0, 0, 0);
 	tc->eColorHSV = cvScalar(0, 0, 0, 0);
 
@@ -49,6 +52,9 @@ tracked_controller_create() {
 
 	tc->mx = 0;
 	tc->my = 0;
+
+	tc->is_tracked = 0;
+	tc->last_color_update=0;
 
 	tc->next = 0x0;
 	return tc;

@@ -49,6 +49,8 @@ enum PSMoveTracker_Status {
     Tracker_CALIBRATING,
     Tracker_CALIBRATION_ERROR,
     Tracker_CALIBRATED,
+    Tracker_CALIBRATED_AND_FOUND,
+    Tracker_CALIBRATED_AND_NOT_FOUND,
 };
 
 /**
