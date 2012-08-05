@@ -45,6 +45,7 @@
 #define GOOD_EXPOSURE 2051			// a very low exposure that was found to be good for tracking
 #define ROIS 5                   	// the number of levels of regions of interest (roi)
 #define BLINKS 4                 	// number of diff images to create during calibration
+#define BLINK_DELAY 50             	// number of milliseconds to wait between a blink
 #define CALIB_MIN_SIZE 50		 	// minimum size of the estimated glowing sphere during calibration process
 #define CALIB_SIZE_STD 10	     	// maximum standard deviation (in %) of the glowing spheres found during calibration process
 #define CALIB_MAX_DIST 30		 	// minimum size of the estimated glowing sphere during calibration process
@@ -262,7 +263,7 @@ psmove_tracker_new(int camera) {
 
 	// start the video capture device for tracking
 	t->cc = camera_control_new(camera);
-	camera_control_read_calibration(t->cc, "IntrinsicsPSMove.xml", "DistortionPSMove.xml");
+	camera_control_read_calibration(t->cc, "Intrinsics.xml", "Distortion.xml");
 
 	// use static exposure
 	t->exposure = GOOD_EXPOSURE;
@@ -343,7 +344,7 @@ enum PSMoveTracker_Status psmove_tracker_enable_with_color(PSMoveTracker *tracke
 	// for each blink
 	for (i = 0; i < BLINKS; i++) {
 		// create a diff image
-		psmove_tracker_get_diff(tracker, move, r, g, b, images[i], diffs[i], 50);
+		psmove_tracker_get_diff(tracker, move, r, g, b, images[i], diffs[i], BLINK_DELAY);
 
 		// DEBUG log the diff image and the image with the lit sphere
 		psmove_html_trace_image_at(images[i], i, "originals");

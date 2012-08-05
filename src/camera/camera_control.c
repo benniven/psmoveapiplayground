@@ -7,9 +7,14 @@
 #include "opencv2/highgui/highgui_c.h"
 #include "opencv2/imgproc/imgproc_c.h"
 
+#define USE_CL_DRIVER
+#define CL_DRIVER_REG_PATH "Software\\PS3EyeCamera\\Settings"
+
 #ifdef WIN32
 #	include <windows.h>
+#ifdef USE_CL_DRIVER
 #	include "CLEyeMulticam.h"
+#endif
 #else
 #	include <fcntl.h>
 #	include <linux/videodev2.h>
@@ -19,25 +24,29 @@
 struct _CameraControl {
 	int cameraID;
 #ifdef WIN32
+#ifdef USE_CL_DRIVER
 	CLEyeCameraInstance camera;
+#else
+	CvCapture* capture;
+#endif
 	IplImage* frame;
 	IplImage* frame3ch;
 	IplImage* frame3chUndistort;
 	PBYTE pCapBuffer;
 #else
-	char device[256];	// used to open the camera on linux
+	char device[256]; // used to open the camera on linux
 	CvCapture* capture;
 #endif
-	// if a negative value is passed, that means don't touch
-	int auto_exp; 	// value range [0-0xFFFF]
-	int auto_wb; 	// value range [0-0xFFFF]
-	int auto_gain;  // value range [0-0xFFFF]
-	int gain; 		// value range [0-0xFFFF]
-	int exposure;   // value range [0-0xFFFF]
-	int wb_red;     // value range [0-0xFFFF]
-	int wb_green;   // value range [0-0xFFFF]
-	int wb_blue;    // value range [0-0xFFFF]
-	int contrast;   // value range [0-0xFFFF]
+	// if a negative value is passed, that means it is not changed
+	int auto_exp; // value range [0-0xFFFF]
+	int auto_wb; // value range [0-0xFFFF]
+	int auto_gain; // value range [0-0xFFFF]
+	int gain; // value range [0-0xFFFF]
+	int exposure; // value range [0-0xFFFF]
+	int wb_red; // value range [0-0xFFFF]
+	int wb_green; // value range [0-0xFFFF]
+	int wb_blue; // value range [0-0xFFFF]
+	int contrast; // value range [0-0xFFFF]
 	int brightness; // value range [0-0xFFFF]
 
 	IplImage* mapx;
@@ -58,13 +67,12 @@ void cc_set_parameters_linux(CameraControl* cc, int autoE, int autoG, int autoWB
 
 void cc_init_members(CameraControl* cc);
 
-
 CameraControl* camera_control_new(int cameraID) {
 
 	CameraControl* cc = (CameraControl*) calloc(1, sizeof(CameraControl));
 	cc_init_members(cc);
 
-#ifdef WIN32
+#if defined(WIN32) && defined(USE_CL_DRIVER)
 	int cams = CLEyeGetCameraCount();
 	if (cams <= cameraID) {
 		// TODO: outsource CRITICAL macro
@@ -81,7 +89,9 @@ CameraControl* camera_control_new(int cameraID) {
 	cc->frame3ch = cvCreateImage(cvSize(w, h), IPL_DEPTH_8U, 3);
 	CLEyeCameraStart(cc->camera);
 #else
+#if !defined(WIN32)
 	sprintf(cc->device, "/dev/video%s", cc->cameraID);
+#endif
 	cc->capture = cvCaptureFromCAM(cc->cameraID);
 	cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_WIDTH, 640);
 	cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_HEIGHT, 480);
@@ -89,11 +99,8 @@ CameraControl* camera_control_new(int cameraID) {
 	//cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FPS, 60);
 #endif
 
-
-
 	return cc;
 }
-
 
 void cc_init_members(CameraControl* cc) {
 	cc->auto_exp = 0;
@@ -139,20 +146,20 @@ void camera_control_read_calibration(CameraControl* cc, char* intrinsicsFile, ch
 
 IplImage* camera_control_query_frame(CameraControl* cc) {
 	IplImage* retVal;
-#ifdef WIN32
+#if defined(WIN32) && defined(USE_CL_DRIVER)
 	// assign buffer-pointer to address of buffer
 	cvGetRawData(cc->frame, &cc->pCapBuffer, 0, 0);
 	// read image
 	CLEyeCameraGetFrame(cc->camera, cc->pCapBuffer, 2000);
 	// convert 4ch image to 3ch image
-	const int from_to[] = { 0, 0, 1, 1, 2, 2 };
+	const int from_to[] = {0, 0, 1, 1, 2, 2};
 	const CvArr** src = (const CvArr**) &cc->frame;
 	CvArr** dst = (CvArr**) &cc->frame3ch;
 	cvMixChannels(src, 1, dst, 1, from_to, 3);
 	// return image
 	retVal = cc->frame3ch;
 #else
-	retVal= cvQueryFrame(cc->capture);
+	retVal = cvQueryFrame(cc->capture);
 #endif
 
 	//IplImage *t = cvCloneImage(retv);
@@ -209,7 +216,7 @@ void cc_backup_sytem_settings_win(CameraControl* cc, const char* file) {
 	DWORD wbB = 0;
 	DWORD wbG = 0;
 	DWORD wbR = 0;
-	char* PATH = "Software\\PS3EyeCamera\\Settings";
+	char* PATH = CL_DRIVER_REG_PATH;
 	int err = RegOpenKeyEx(HKEY_CURRENT_USER, PATH, 0, KEY_ALL_ACCESS, &hKey);
 	if (err != ERROR_SUCCESS) {
 		printf("Error: %d Unable to open reg-key:  [HKCU]\%s!", err, PATH);
@@ -281,8 +288,7 @@ void cc_restore_sytem_settings_win(CameraControl* cc, const char* file) {
 	HKEY hKey;
 	DWORD l = sizeof(DWORD);
 
-	char* PATH = "Software\\PS3EyeCamera\\Settings";
-
+	char* PATH = CL_DRIVER_REG_PATH;
 	int err = RegOpenKeyEx(HKEY_CURRENT_USER, PATH, 0, KEY_ALL_ACCESS, &hKey);
 	if (err != ERROR_SUCCESS) {
 		printf("Error: %d Unable to open reg-key:  [HKCU]\%s!", err, PATH);
@@ -310,6 +316,10 @@ void cc_restore_sytem_settings_win(CameraControl* cc, const char* file) {
 	if (val != NOT_FOUND)
 		RegSetValueExA(hKey, "Gain", 0, REG_DWORD, (CONST BYTE*) &val, l);
 
+	val = iniparser_getint(ini, "PSEye:WhiteBalanceR", NOT_FOUND);
+	if (val != NOT_FOUND)
+		RegSetValueExA(hKey, "WhiteBalanceR", 0, REG_DWORD, (CONST BYTE*) &val, l);
+
 	val = iniparser_getint(ini, "PSEye:WhiteBalanceB", NOT_FOUND);
 	if (val != NOT_FOUND)
 		RegSetValueExA(hKey, "WhiteBalanceB", 0, REG_DWORD, (CONST BYTE*) &val, l);
@@ -317,10 +327,6 @@ void cc_restore_sytem_settings_win(CameraControl* cc, const char* file) {
 	val = iniparser_getint(ini, "PSEye:WhiteBalanceG", NOT_FOUND);
 	if (val != NOT_FOUND)
 		RegSetValueExA(hKey, "WhiteBalanceG", 0, REG_DWORD, (CONST BYTE*) &val, l);
-
-	val = iniparser_getint(ini, "PSEye:WhiteBalanceR", NOT_FOUND);
-	if (val != NOT_FOUND)
-		RegSetValueExA(hKey, "WhiteBalanceR", 0, REG_DWORD, (CONST BYTE*) &val, l);
 
 	iniparser_freedict(ini);
 #endif
@@ -367,22 +373,50 @@ void cc_restore_sytem_settings_linux(CameraControl* cc, const char* file) {
 void cc_set_parameters_win(CameraControl* cc, int autoE, int autoG, int autoWB, int exposure, int gain, int wbRed, int wbGreen, int wbBlue, int contrast,
 		int brightness) {
 #ifdef WIN32
+#ifdef USE_CL_DRIVER
 	if (autoE >= 0)
-		CLEyeSetCameraParameter(cc->camera, CLEYE_AUTO_EXPOSURE, autoE > 0);
+	CLEyeSetCameraParameter(cc->camera, CLEYE_AUTO_EXPOSURE, autoE > 0);
 	if (autoG >= 0)
-		CLEyeSetCameraParameter(cc->camera, CLEYE_AUTO_GAIN, autoG > 0);
+	CLEyeSetCameraParameter(cc->camera, CLEYE_AUTO_GAIN, autoG > 0);
 	if (autoWB >= 0)
-		CLEyeSetCameraParameter(cc->camera, CLEYE_AUTO_WHITEBALANCE, autoWB > 0);
+	CLEyeSetCameraParameter(cc->camera, CLEYE_AUTO_WHITEBALANCE, autoWB > 0);
 	if (exposure >= 0)
-		CLEyeSetCameraParameter(cc->camera, CLEYE_EXPOSURE, round((511 * exposure) / 0xFFFF));
+	CLEyeSetCameraParameter(cc->camera, CLEYE_EXPOSURE, round((511 * exposure) / 0xFFFF));
 	if (gain >= 0)
-		CLEyeSetCameraParameter(cc->camera, CLEYE_GAIN, round((79 * gain) / 0xFFFF));
+	CLEyeSetCameraParameter(cc->camera, CLEYE_GAIN, round((79 * gain) / 0xFFFF));
 	if (wbRed >= 0)
-		CLEyeSetCameraParameter(cc->camera, CLEYE_WHITEBALANCE_RED, round((255 * wbRed) / 0xFFFF));
+	CLEyeSetCameraParameter(cc->camera, CLEYE_WHITEBALANCE_RED, round((255 * wbRed) / 0xFFFF));
 	if (wbGreen >= 0)
-		CLEyeSetCameraParameter(cc->camera, CLEYE_WHITEBALANCE_GREEN, round((255 * wbGreen) / 0xFFFF));
+	CLEyeSetCameraParameter(cc->camera, CLEYE_WHITEBALANCE_GREEN, round((255 * wbGreen) / 0xFFFF));
 	if (wbBlue >= 0)
-		CLEyeSetCameraParameter(cc->camera, CLEYE_WHITEBALANCE_BLUE, round((255 * wbBlue) / 0xFFFF));
+	CLEyeSetCameraParameter(cc->camera, CLEYE_WHITEBALANCE_BLUE, round((255 * wbBlue) / 0xFFFF));
+#else
+	int val;
+	HKEY hKey;
+	DWORD l = sizeof(DWORD);
+	char* PATH = CL_DRIVER_REG_PATH;
+	int err = RegOpenKeyEx(HKEY_CURRENT_USER, PATH, 0, KEY_ALL_ACCESS, &hKey);
+	if (err != ERROR_SUCCESS) {
+		printf("Error: %d Unable to open reg-key:  [HKCU]\%s!", err, PATH);
+		return;
+	}
+	val = autoE > 0;
+	RegSetValueExA(hKey, "AutoAEC", 0, REG_DWORD, (CONST BYTE*) &val, l);
+	val = autoG > 0;
+	RegSetValueExA(hKey, "AutoAGC", 0, REG_DWORD, (CONST BYTE*) &val, l);
+	val = autoWB > 0;
+	RegSetValueExA(hKey, "AutoAWB", 0, REG_DWORD, (CONST BYTE*) &val, l);
+	val = round((511 * exposure) / 0xFFFF);
+	RegSetValueExA(hKey, "Exposure", 0, REG_DWORD, (CONST BYTE*) &val, l);
+	val = round((79 * gain) / 0xFFFF);
+	RegSetValueExA(hKey, "Gain", 0, REG_DWORD, (CONST BYTE*) &val, l);
+	val = round((255 * wbRed) / 0xFFFF);
+	RegSetValueExA(hKey, "WhiteBalanceR", 0, REG_DWORD, (CONST BYTE*) &val, l);
+	val = round((255 * wbGreen) / 0xFFFF);
+	RegSetValueExA(hKey, "WhiteBalanceG", 0, REG_DWORD, (CONST BYTE*) &val, l);
+	val = round((255 * wbBlue) / 0xFFFF);
+	RegSetValueExA(hKey, "WhiteBalanceB", 0, REG_DWORD, (CONST BYTE*) &val, l);
+#endif
 #endif
 }
 void cc_set_parameters_linux(CameraControl* cc, int autoE, int autoG, int autoWB, int exposure, int gain, int wbRed, int wbGreen, int wbBlue, int contrast,
