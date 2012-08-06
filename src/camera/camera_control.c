@@ -7,7 +7,7 @@
 #include "opencv2/highgui/highgui_c.h"
 #include "opencv2/imgproc/imgproc_c.h"
 
-//#define USE_CL_DRIVER
+#define USE_CL_DRIVER
 #define CL_DRIVER_REG_PATH "Software\\PS3EyeCamera\\Settings"
 
 #ifdef WIN32

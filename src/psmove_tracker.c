@@ -44,7 +44,7 @@
 
 #define PRINT_DEBUG_STATS			// shall graphical statistics be printed to the image
 #define GOOD_EXPOSURE 2051			// a very low exposure that was found to be good for tracking
-#define ROIS 5                   	// the number of levels of regions of interest (roi)
+#define ROIS 6                   	// the number of levels of regions of interest (roi)
 #define BLINKS 4                 	// number of diff images to create during calibration
 #define BLINK_DELAY 50             	// number of milliseconds to wait between a blink
 #define CALIB_MIN_SIZE 50		 	// minimum size of the estimated glowing sphere during calibration process (in pixel)
@@ -62,7 +62,7 @@
 // if tracker thresholds not met, sphere is deemed not to be found
 #define TRACKER_QUALITY_T1 0.3		// minimum ratio of number of pixels in blob vs pixel of estimated circle.
 #define TRACKER_QUALITY_T2 0.7		// maximum allowed change of the radius in percent, compared to the last estimated radius
-#define TRACKER_QUALITY_T3 3		// minimum radius
+#define TRACKER_QUALITY_T3 4		// minimum radius
 #define TRACKER_ADAPTIVE_XY 1		// specifies to use a adaptive x/y smoothing
 #define TRACKER_ADAPTIVE_Z 1		// specifies to use a adaptive z smoothing
 #define COLOR_ADAPTION_QUALITY 35 	// maximal distance between the first estimated color and the newly estimated
@@ -175,7 +175,7 @@ void psmove_tracker_prepare_colors(PSMoveTracker* tracker);
 /**
  * This function is just the internal implementation of "psmove_tracker_update"
  */
-int psmove_tracker_update_controller(PSMoveTracker* tracker, TrackedController* tc);
+int psmove_tracker_update_controller(PSMoveTracker* tracker, TrackedController* tc, float* q1, float* q2, float* q3);
 
 /**
  * This draws tracking statistics into the current camera image. This is only used internally.
@@ -239,10 +239,16 @@ void psmove_tracker_estimate_3d_pos(CvSeq* cont, CvPoint* center, float* radius)
  */
 CvPoint psmove_tracker_better_roi_center(TrackedController* tc, PSMoveTracker* t);
 
+int psmove_tracker_old_color_is_tracked(PSMoveTracker* t, PSMove* move, int r, int g, int b);
+
 // -------- END: internal functions only
 
+PSMoveTracker *psmove_tracker_new() {
+	return psmove_tracker_new_with_camera(0);
+}
+
 PSMoveTracker *
-psmove_tracker_new(int camera) {
+psmove_tracker_new_with_camera(int camera) {
 	int i = 0;
 	PSMoveTracker* t = (PSMoveTracker*) calloc(1, sizeof(PSMoveTracker));
 	t->controllers = 0x0;
@@ -299,12 +305,12 @@ psmove_tracker_new(int camera) {
 	// prepare ROI data structures
 	t->roiI[0] = cvCreateImage(cvGetSize(frame), frame->depth, 3);
 	t->roiM[0] = cvCreateImage(cvGetSize(frame), frame->depth, 1);
+	int b = (MIN(t->roiI[0]->height, t->roiI[0]->width) / ROIS);
 	for (i = 1; i < ROIS; i++) {
 		IplImage* z = t->roiI[i - 1];
-		int w = z->width;
-		// TODO: nicht fix 60%
-		t->roiI[i] = cvCreateImage(cvSize(w * 0.6, w * 0.6), z->depth, 3);
-		t->roiM[i] = cvCreateImage(cvSize(w * 0.6, w * 0.6), z->depth, 1);
+		int h = b * (ROIS - i);
+		t->roiI[i] = cvCreateImage(cvSize(h, h), z->depth, 3);
+		t->roiM[i] = cvCreateImage(cvSize(h, h), z->depth, 1);
 	}
 
 	// prepare structure used for
@@ -329,17 +335,62 @@ enum PSMoveTracker_Status psmove_tracker_enable(PSMoveTracker *tracker, PSMove *
 	return psmove_tracker_enable_with_color(tracker, move, r, g, b);
 }
 
+int psmove_tracker_old_color_is_tracked(PSMoveTracker* t, PSMove* move, int r, int g, int b) {
+	int delay = 100;
+	int result = 0;
+
+	int nTimes = 3;
+
+	TrackedController* tc = tracked_controller_create();
+	tc->dColor = cvScalar(b, g, r, 0);
+	float q1 = 0;
+	float q3 = 0;
+	int i = 0;
+	int d = 0;
+	if (tracked_controller_load_color(tc)) {
+
+		result = 1;
+		for (i = 0; i < nTimes; i++) {
+			// sleep a little befor checking the next image
+			for (d = 0; d < delay / 10; d++) {
+				usleep(1000 * 10);
+				psmove_set_leds(move, r, g, b);
+				psmove_update_leds(move);
+				psmove_tracker_update_image(t);
+			}
+
+			psmove_tracker_update_controller(t, tc, &q1, 0, &q3);
+			psmove_tracker_draw_tracking_stats(t);
+
+			// if the quality is higher than 83% and the blobs radius bigger than 8px
+			result = result && q1 > 0.83 && q3 > 8;
+		}
+	}
+	tracked_controller_release(&tc, 1);
+	return result;
+
+}
+
 enum PSMoveTracker_Status psmove_tracker_enable_with_color(PSMoveTracker *tracker, PSMove *move, unsigned char r, unsigned char g, unsigned char b) {
 	PSMoveTracker* t = tracker;
-
+	int i;
 	// check if the controller is already enabled!
 	if (tracked_controller_find(tracker->controllers, move))
 		return Tracker_CALIBRATED;
 
 	// check if the color is already in use, if not, mark it as used, return with a error if it is already used
 	PSMoveTrackingColor* tracked_color = tracked_color_find(tracker->available_colors, r, g, b);
-	if (tracked_color != 0x0 && tracked_color->is_used)
+	if (tracked_color == 0x0 || tracked_color->is_used)
 		return Tracker_CALIBRATION_ERROR;
+
+	// try to track the controller with the old color, if it works, immediately return1
+	if (psmove_tracker_old_color_is_tracked(tracker, move, r, g, b)) {
+		TrackedController* itm = tracked_controller_insert(&tracker->controllers, move);
+		itm->dColor = cvScalar(b, g, r, 0);
+		tracked_controller_load_color(itm);
+		tracked_color->is_used = 1;
+		return Tracker_CALIBRATED;
+	}
 
 	// clear the calibration html trace
 	psmove_html_trace_clear();
@@ -348,7 +399,6 @@ enum PSMoveTracker_Status psmove_tracker_enable_with_color(PSMoveTracker *tracke
 	IplImage* images[BLINKS]; // array of images saved during calibration for estimation of sphere color
 	IplImage* diffs[BLINKS]; // array of masks saved during calibration for estimation of sphere color
 	double sizes[BLINKS]; // array of blob sizes saved during calibration for estimation of sphere color
-	int i;
 	for (i = 0; i < BLINKS; i++) {
 		images[i] = cvCreateImage(cvGetSize(frame), frame->depth, 3);
 		diffs[i] = cvCreateImage(cvGetSize(frame), frame->depth, 1);
@@ -491,7 +541,6 @@ enum PSMoveTracker_Status psmove_tracker_enable_with_color(PSMoveTracker *tracke
 
 	// CHECK if the size of the found contours are similar
 	double stdSizes = sqrt(th_var(sizes, BLINKS));
-	printf("stdSizes: %f   vs   %f \n", stdSizes, th_avg(sizes, BLINKS) / 100.0);
 	if (stdSizes >= (th_avg(sizes, BLINKS) / 100.0 * CALIB_SIZE_STD)) {
 		psmove_html_trace_log_entry("ERROR", "The spheres found differ too much in size.");
 		CHECK_HAS_ERRORS++;
@@ -510,13 +559,11 @@ enum PSMoveTracker_Status psmove_tracker_enable_with_color(PSMoveTracker *tracke
 	// set current estimated color
 	itm->eColor = color;
 	itm->eColorHSV = hsv_color;
-	itm->roi_x = 0;
-	itm->roi_y = 0;
-	itm->roi_level = 0;
 
 	// set, that this color is in use
-	if (tracked_color != 0x0)
-		tracked_color->is_used = 1;
+	tracked_color->is_used = 1;
+
+	tracked_controller_save_colors(tracker->controllers);
 	return Tracker_CALIBRATED;
 }
 
@@ -563,7 +610,7 @@ void psmove_tracker_update_image(PSMoveTracker *tracker) {
 	tracker->frame = camera_control_query_frame(tracker->cc);
 }
 
-int psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController* tc) {
+int psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController* tc, float* q1, float* q2, float* q3) {
 	PSMoveTracker* t = tracker;
 	CvPoint c;
 	int i = 0;
@@ -582,6 +629,7 @@ int psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController* 
 
 		// adjust the ROI, so that the blob is fully visible, but only if we have a reasonable FPS
 		if (t->debug_fps > ROI_ADJUST_FPS_T) {
+
 			CvPoint nRoiCenter = psmove_tracker_better_roi_center(tc, tracker);
 			if (nRoiCenter.x != -1) {
 				tc->roi_x = nRoiCenter.x;
@@ -610,7 +658,6 @@ int psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController* 
 			// restore the biggest contour
 			cvSet(roi_m, th_black, 0x0);
 			cvDrawContours(roi_m, contourBest, th_white, th_white, -1, CV_FILLED, 8, cvPoint(0, 0));
-
 #ifdef PRINT_DEBUG_STATS
 			if (tc->next == 0x0)
 				cvShowImage("0", roi_m);
@@ -661,12 +708,11 @@ int psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController* 
 			int pixelInBlob = cvCountNonZero(roi_m);
 			float pixelInResult = tc->r * tc->r * th_PI;
 			float tq1 = 0;
-			float tq2 = 0;
+			float tq2 = FLT_MAX;
 			float tq3 = tc->r;
 
 			// The quality checks are all performed on the radius of the blob
 			// its old radius and size.
-
 			tq1 = pixelInBlob / pixelInResult;
 
 			// always check pixelration and minimal size
@@ -687,6 +733,14 @@ int psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController* 
 				// additionally check for to big changes
 				sphere_found = sphere_found && tq2 < t->tracker_t2;
 			}
+
+			// save output parameters for the quality indicators
+			if (q1 != 0x0)
+				*q1 = tq1;
+			if (q2 != 0x0)
+				*q2 = tq2;
+			if (q3 != 0x0)
+				*q3 = tq3;
 
 			// only if the quality is okay update the future ROI
 			if (sphere_found) {
@@ -779,16 +833,16 @@ int psmove_tracker_update(PSMoveTracker *tracker, PSMove *move) {
 		// iterate trough all controllers and find their lit spheres
 		tc = tracker->controllers;
 		for (; tc != 0x0 && tracker->frame; tc = tc->next) {
-			spheres_found += psmove_tracker_update_controller(tracker, tc);
+			spheres_found += psmove_tracker_update_controller(tracker, tc, 0, 0, 0);
 		}
 	} else {
 		// find just that specific controller
 		tc = tracked_controller_find(tracker->controllers, move);
 		if (tracker->frame && tc) {
-			spheres_found = psmove_tracker_update_controller(tracker, tc);
+			spheres_found = psmove_tracker_update_controller(tracker, tc, 0, 0, 0);
 		}
 	}
-	// used for FPS calculation (timer)
+// used for FPS calculation (timer)
 	hp_timer_stop(tracker->timer);
 
 	// draw all/one controller information to camera image
@@ -817,6 +871,8 @@ int psmove_tracker_get_position(PSMoveTracker *tracker, PSMove *move, float *x, 
 }
 
 void psmove_tracker_free(PSMoveTracker *tracker) {
+	tracked_controller_save_colors(tracker->controllers);
+
 	if (th_file_exists(PSEYE_BACKUP_FILE))
 		camera_control_restore_sytem_settings(tracker->cc, PSEYE_BACKUP_FILE);
 	hp_timer_release(tracker->timer);

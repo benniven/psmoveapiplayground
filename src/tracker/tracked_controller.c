@@ -27,6 +27,11 @@
  **/
 
 #include "tracked_controller.h"
+#include "tracker_helpers.h"
+#include "../iniparser/iniparser.h"
+#include "../iniparser/dictionary.h"
+
+#define COLOR_MAPPING_FILE "ColorMappings.ini"
 
 TrackedController*
 tracked_controller_create() {
@@ -54,7 +59,7 @@ tracked_controller_create() {
 	tc->my = 0;
 
 	tc->is_tracked = 0;
-	tc->last_color_update=0;
+	tc->last_color_update = 0;
 
 	tc->next = 0x0;
 	return tc;
@@ -130,5 +135,51 @@ void tracked_controller_remove(TrackedController** head, PSMove* data) {
 
 		tracked_controller_release(&delete, 0);
 	}
+}
+
+void tracked_controller_save_colors(TrackedController* head) {
+	//dictionary* ini = iniparser_load(file);
+	//val = iniparser_getint(ini, "PSEye:AutoAEC", NOT_FOUND);
+	char key[128];
+	char value[128];
+
+	dictionary* ini = iniparser_load(COLOR_MAPPING_FILE);
+	iniparser_set(ini, "ColorMapping", 0);
+
+	TrackedController* tmp = head;
+
+	for (; tmp != 0x0; tmp = tmp->next) {
+		sprintf(key, "ColorMapping:%X%X%X", (int) tmp->dColor.val[2], (int) tmp->dColor.val[1], (int) tmp->dColor.val[0]);
+		sprintf(value, "%X%X%X", (int) tmp->eFColor.val[2], (int) tmp->eFColor.val[1], (int) tmp->eFColor.val[0]);
+		iniparser_set(ini, key, value);
+	}
+	iniparser_save_ini(ini, COLOR_MAPPING_FILE);
+	dictionary_del(ini);
+}
+
+int tracked_controller_load_color(TrackedController* tc) {
+	int loaded = 0;
+	char key[128];
+	dictionary* ini = iniparser_load(COLOR_MAPPING_FILE);
+	sprintf(key, "ColorMapping:%X%X%X", (int) tc->dColor.val[2], (int) tc->dColor.val[1], (int) tc->dColor.val[0]);
+	if (iniparser_find_entry(ini, key)) {
+		char* sValue = iniparser_getstring(ini, key, "");
+		int value = 0;
+		sscanf(sValue, "%X", &value);
+		tc->eFColor.val[2] = value >> 16 & 0xFF;
+		tc->eFColor.val[1] = value >> 8 & 0xFF;
+		tc->eFColor.val[0] = value & 0xFF;
+
+		tc->eColor.val[2] = tc->eFColor.val[2];
+		tc->eColor.val[1] = tc->eFColor.val[1];
+		tc->eColor.val[0] = tc->eFColor.val[0];
+
+		tc->eColorHSV = th_brg2hsv(tc->eColor);
+		tc->eFColorHSV = th_brg2hsv(tc->eFColor);
+
+		loaded = 1;
+	} else
+		dictionary_del(ini);
+	return loaded;
 }
 

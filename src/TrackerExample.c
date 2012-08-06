@@ -25,7 +25,7 @@ int main(int arg, char** args) {
 	PSMove* controllers[numCtrls];
 
 	printf("%s", "### Trying to init PSMoveTracker...");
-	PSMoveTracker* tracker = psmove_tracker_new(0);
+	PSMoveTracker* tracker = psmove_tracker_new();
 	printf("%s\n", "OK");
 	printf("### Found %d controllers.\n", numCtrls);
 

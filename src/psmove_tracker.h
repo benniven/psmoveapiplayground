@@ -59,7 +59,15 @@ enum PSMoveTracker_Status {
  * Returns a new PSMoveTracker * instance or NULL (indicates error)
  **/
 PSMoveTracker *
-psmove_tracker_new(int camera);
+psmove_tracker_new();
+
+/**
+ * Create a new PS Move tracker and set up tracking
+ *
+ * Returns a new PSMoveTracker * instance or NULL (indicates error)
+ **/
+PSMoveTracker *
+psmove_tracker_new_with_camera(int camera);
 
 
 /**
