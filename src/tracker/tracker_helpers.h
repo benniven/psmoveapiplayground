@@ -21,6 +21,9 @@
 #define th_dist_squared(a,b) (pow((a).x-(b).x,2)+pow((a).y-(b).y,2))
 #define th_dist(a,b) (sqrt(pow((a).x-(b).x,2)+pow((a).y-(b).y,2)))
 
+#define th_esc_key 27
+#define th_space_key 32
+
 // some basic statistical functions on arrays
 double th_var(double* src, int len);
 double th_avg(double* src, int len);

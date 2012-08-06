@@ -13,16 +13,15 @@
 
 #define CAM_TO_USE 0
 
-int Xmain(int arg, char** args) {
+int xmain(int arg, char** args) {
 	int board_w = 4; // Board width in squares
 	int board_h = 7; // Board height
 	int n_boards = 5; // Number of boards
-	int skip_n = 60; // skip every n frames gives user time to adjust the checkboard
 	int board_n = board_w * board_h;
 	CvSize board_sz = cvSize(board_w, board_h);
 	CameraControl* cc = camera_control_new(0);
 
-	// Allocate Sotrage
+	// Allocate Memory
 	CvMat* image_points = cvCreateMat(n_boards * board_n, 2, CV_32FC1);
 	CvMat* object_points = cvCreateMat(n_boards * board_n, 3, CV_32FC1);
 	CvMat* point_counts = cvCreateMat(n_boards, 1, CV_32SC1);
@@ -33,7 +32,6 @@ int Xmain(int arg, char** args) {
 	CvPoint2D32f corners[board_n];
 	int i = 0;
 	int j = 0;
-	int frame = 0;
 	for (i = 0; i < board_n; i++)
 		corners[i] = cvPoint2D32f(0, 0);
 
@@ -56,36 +54,35 @@ int Xmain(int arg, char** args) {
 		// skip a second to allow user to move the chessboard
 		image = camera_control_query_frame(cc); // Get next image
 		cvCvtColor(image, gray_image, CV_BGR2GRAY);
-		if (frame++ % skip_n == 0) {
-			cvWaitKey(1);
-			corner_count = 0;
 
-			// Find chessboard corners:
-			int found = cvFindChessboardCorners(gray_image, board_sz, corners, &corner_count, CV_CALIB_CB_ADAPTIVE_THRESH | CV_CALIB_CB_FILTER_QUADS);
+		int key = cvWaitKey(1);
+		corner_count = 0;
 
-			// Get subpixel accuracy on those corners
-			cvFindCornerSubPix(gray_image, corners, corner_count, cvSize(11, 11), cvSize(-1, -1), cvTermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
-			// Draw it
-			cvDrawChessboardCorners(image, board_sz, corners, corner_count, found);
+		// Find chessboard corners:
+		int found = cvFindChessboardCorners(gray_image, board_sz, corners, &corner_count, CV_CALIB_CB_ADAPTIVE_THRESH | CV_CALIB_CB_FILTER_QUADS);
 
-			char text[222];
-			sprintf(text, "calibration image %d/%d", successes, n_boards);
-			th_put_text(image, text, cvPoint(20, 20), th_white, 1.0);
-			cvShowImage("Calibration", image);
+		// Get subpixel accuracy on those corners
+		cvFindCornerSubPix(gray_image, corners, corner_count, cvSize(11, 11), cvSize(-1, -1), cvTermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
+		// Draw it
+		cvDrawChessboardCorners(image, board_sz, corners, corner_count, found);
 
-			// If we got a good board, add it to our data
-			if (corner_count == board_n) {
-				step = successes * board_n;
-				for (i = step, j = 0; j < board_n; ++i, ++j) {
-					CV_MAT_ELEM( *image_points, float, i, 0 ) = corners[j].x;
-					CV_MAT_ELEM( *image_points, float, i, 1 ) = corners[j].y;
-					CV_MAT_ELEM( *object_points, float, i, 0 ) = j / board_w;
-					CV_MAT_ELEM( *object_points, float, i, 1 ) = j % board_w;
-					CV_MAT_ELEM( *object_points, float, i, 2 ) = 0.0f;
-				}
-				CV_MAT_ELEM( *point_counts, int, successes, 0 ) = board_n;
-				successes++;
+		char text[222];
+		sprintf(text, "calibration image %d/%d (press 'space' to take a picture!)", successes, n_boards);
+		th_put_text(image, text, cvPoint(20, 20), th_white, 1.0);
+		cvShowImage("Calibration", image);
+		// If we got a good board, add it to our data
+		if (corner_count == board_n && key == th_space_key) {
+			step = successes * board_n;
+			for (i = step, j = 0; j < board_n; ++i, ++j) {
+				CV_MAT_ELEM( *image_points, float, i, 0 ) = corners[j].x;
+				CV_MAT_ELEM( *image_points, float, i, 1 ) = corners[j].y;
+				CV_MAT_ELEM( *object_points, float, i, 0 ) = j / board_w;
+				CV_MAT_ELEM( *object_points, float, i, 1 ) = j % board_w;
+				CV_MAT_ELEM( *object_points, float, i, 2 ) = 0.0f;
 			}
+			CV_MAT_ELEM( *point_counts, int, successes, 0 ) = board_n;
+			successes++;
+			printf("%s\n", text);
 
 		}
 	}

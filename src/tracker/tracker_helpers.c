@@ -213,7 +213,7 @@ void th_wait_move_button(PSMove* move, int button) {
 void th_wait_esc() {
 	while (1) {
 		//If ESC key pressed
-		if ((cvWaitKey(10) & 255) == 27)
+		if ((cvWaitKey(10) & 255) == th_esc_key)
 			break;
 	}
 }

@@ -7,7 +7,7 @@
 #include "opencv2/highgui/highgui_c.h"
 #include "opencv2/imgproc/imgproc_c.h"
 
-#define USE_CL_DRIVER
+//#define USE_CL_DRIVER
 #define CL_DRIVER_REG_PATH "Software\\PS3EyeCamera\\Settings"
 
 #ifdef WIN32
@@ -26,13 +26,14 @@ struct _CameraControl {
 #ifdef WIN32
 #ifdef USE_CL_DRIVER
 	CLEyeCameraInstance camera;
+	IplImage* frame3ch;
+	PBYTE pCapBuffer;
 #else
 	CvCapture* capture;
+
 #endif
 	IplImage* frame;
-	IplImage* frame3ch;
 	IplImage* frame3chUndistort;
-	PBYTE pCapBuffer;
 #else
 	char device[256]; // used to open the camera on linux
 	CvCapture* capture;
@@ -416,6 +417,14 @@ void cc_set_parameters_win(CameraControl* cc, int autoE, int autoG, int autoWB, 
 	RegSetValueExA(hKey, "WhiteBalanceG", 0, REG_DWORD, (CONST BYTE*) &val, l);
 	val = round((255 * wbBlue) / 0xFFFF);
 	RegSetValueExA(hKey, "WhiteBalanceB", 0, REG_DWORD, (CONST BYTE*) &val, l);
+
+	// restart the camera capture with openCv
+	if(cc->capture!=0x0)
+		cvReleaseCapture(&cc->capture);
+
+	cc->capture = cvCaptureFromCAM(cc->cameraID);
+	cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_WIDTH, 640);
+	cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_HEIGHT, 480);
 #endif
 #endif
 }
