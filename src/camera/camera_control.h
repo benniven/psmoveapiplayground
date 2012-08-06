@@ -46,6 +46,6 @@ void camera_control_restore_sytem_settings(CameraControl* cc, const char* file);
 
 IplImage* camera_control_query_frame(CameraControl* cc);
 
-void camera_control_delete(CameraControl** cc);
+void camera_control_delete(CameraControl** cameraCtrl);
 
 #endif /* CAMERA_CONTROL_H_ */

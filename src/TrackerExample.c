@@ -82,6 +82,7 @@ int main(int arg, char** args) {
 	for (i = 0; i < numCtrls; i++) {
 		psmove_disconnect(controllers[i]);
 	}
+	psmove_tracker_free(tracker);
 	return 0;
 }
 

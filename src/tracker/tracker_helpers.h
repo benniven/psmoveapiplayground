@@ -36,8 +36,7 @@ void th_mul(double* array, double f, double* result, int len);
 // returns (1: if image/storage is created) (0: if nothing has been done)
 int th_create_image(IplImage** img, CvSize s, int depth, int channels);
 int th_create_mem_storage(CvMemStorage** stor, int block_size);
-int th_create_hist(CvHistogram** hist, int dims, int* sizes, int type,
-		float** ranges, int uniform);
+int th_create_hist(CvHistogram** hist, int dims, int* sizes, int type, float** ranges, int uniform);
 
 void th_put_text(IplImage* img, const char* text, CvPoint p, CvScalar color, float scale);
 IplImage* th_plot_hist(CvHistogram* hist, int bins, const char* windowName, CvScalar lineColor);
@@ -60,5 +59,5 @@ void th_wait_move_button(PSMove* move, int button);
 int th_move_button(PSMove* move, int button);
 
 void th_equalize_image(IplImage* img);
+int th_file_exists(const char* file);
 #endif // TRACKER_HELPERS_H
-

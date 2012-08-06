@@ -7,7 +7,7 @@
 #include "opencv2/highgui/highgui_c.h"
 #include "opencv2/imgproc/imgproc_c.h"
 
-//#define USE_CL_DRIVER
+#define USE_CL_DRIVER
 #define CL_DRIVER_REG_PATH "Software\\PS3EyeCamera\\Settings"
 
 #ifdef WIN32
@@ -153,7 +153,7 @@ IplImage* camera_control_query_frame(CameraControl* cc) {
 	// read image
 	CLEyeCameraGetFrame(cc->camera, cc->pCapBuffer, 2000);
 	// convert 4ch image to 3ch image
-	const int from_to[] = {0, 0, 1, 1, 2, 2};
+	const int from_to[] = { 0, 0, 1, 1, 2, 2 };
 	const CvArr** src = (const CvArr**) &cc->frame;
 	CvArr** dst = (CvArr**) &cc->frame3ch;
 	cvMixChannels(src, 1, dst, 1, from_to, 3);
@@ -190,9 +190,26 @@ void camera_control_restore_sytem_settings(CameraControl* cc, const char* file) 
 #endif
 }
 
-void camera_control_delete(CameraControl** cc) {
-	free(*cc);
-	*cc = 0;
+void camera_control_delete(CameraControl** cameraCtrl) {
+	CameraControl* cc = *cameraCtrl;
+#if defined(WIN32) && defined(USE_CL_DRIVER)
+	if (cc->frame3ch != 0x0)
+		cvReleaseImage(&cc->frame3ch);
+	CLEyeDestroyCamera(cc->camera);
+#else
+	// linux, others and windows opencv only
+	cvReleaseCapture(&cc->capture);
+#endif
+	if (cc->frame3chUndistort != 0x0)
+		cvReleaseImage(&cc->frame3chUndistort);
+
+	if (cc->mapx != 0x0)
+		cvReleaseImage(&cc->mapx);
+	if (cc->mapy != 0x0)
+		cvReleaseImage(&cc->mapy);
+
+	free(*cameraCtrl);
+	*cameraCtrl = 0;
 }
 
 void camera_control_set_parameters(CameraControl* cc, int autoE, int autoG, int autoWB, int exposure, int gain, int wbRed, int wbGreen, int wbBlue,
@@ -376,21 +393,21 @@ void cc_set_parameters_win(CameraControl* cc, int autoE, int autoG, int autoWB, 
 #ifdef WIN32
 #ifdef USE_CL_DRIVER
 	if (autoE >= 0)
-	CLEyeSetCameraParameter(cc->camera, CLEYE_AUTO_EXPOSURE, autoE > 0);
+		CLEyeSetCameraParameter(cc->camera, CLEYE_AUTO_EXPOSURE, autoE > 0);
 	if (autoG >= 0)
-	CLEyeSetCameraParameter(cc->camera, CLEYE_AUTO_GAIN, autoG > 0);
+		CLEyeSetCameraParameter(cc->camera, CLEYE_AUTO_GAIN, autoG > 0);
 	if (autoWB >= 0)
-	CLEyeSetCameraParameter(cc->camera, CLEYE_AUTO_WHITEBALANCE, autoWB > 0);
+		CLEyeSetCameraParameter(cc->camera, CLEYE_AUTO_WHITEBALANCE, autoWB > 0);
 	if (exposure >= 0)
-	CLEyeSetCameraParameter(cc->camera, CLEYE_EXPOSURE, round((511 * exposure) / 0xFFFF));
+		CLEyeSetCameraParameter(cc->camera, CLEYE_EXPOSURE, round((511 * exposure) / 0xFFFF));
 	if (gain >= 0)
-	CLEyeSetCameraParameter(cc->camera, CLEYE_GAIN, round((79 * gain) / 0xFFFF));
+		CLEyeSetCameraParameter(cc->camera, CLEYE_GAIN, round((79 * gain) / 0xFFFF));
 	if (wbRed >= 0)
-	CLEyeSetCameraParameter(cc->camera, CLEYE_WHITEBALANCE_RED, round((255 * wbRed) / 0xFFFF));
+		CLEyeSetCameraParameter(cc->camera, CLEYE_WHITEBALANCE_RED, round((255 * wbRed) / 0xFFFF));
 	if (wbGreen >= 0)
-	CLEyeSetCameraParameter(cc->camera, CLEYE_WHITEBALANCE_GREEN, round((255 * wbGreen) / 0xFFFF));
+		CLEyeSetCameraParameter(cc->camera, CLEYE_WHITEBALANCE_GREEN, round((255 * wbGreen) / 0xFFFF));
 	if (wbBlue >= 0)
-	CLEyeSetCameraParameter(cc->camera, CLEYE_WHITEBALANCE_BLUE, round((255 * wbBlue) / 0xFFFF));
+		CLEyeSetCameraParameter(cc->camera, CLEYE_WHITEBALANCE_BLUE, round((255 * wbBlue) / 0xFFFF));
 #else
 	int val;
 	HKEY hKey;
@@ -419,8 +436,8 @@ void cc_set_parameters_win(CameraControl* cc, int autoE, int autoG, int autoWB, 
 	RegSetValueExA(hKey, "WhiteBalanceB", 0, REG_DWORD, (CONST BYTE*) &val, l);
 
 	// restart the camera capture with openCv
-	if(cc->capture!=0x0)
-		cvReleaseCapture(&cc->capture);
+	if (cc->capture != 0x0)
+	cvReleaseCapture(&cc->capture);
 
 	cc->capture = cvCaptureFromCAM(cc->cameraID);
 	cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_WIDTH, 640);

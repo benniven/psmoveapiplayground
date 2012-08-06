@@ -184,7 +184,7 @@ psmove_tracker_update_image(PSMoveTracker *tracker);
  **/
 int
 psmove_tracker_get_position(PSMoveTracker *tracker,
-        PSMove *move, int *x, int *y, int *radius);
+        PSMove *move, float *x, float *y, float *radius);
 
 
 /**

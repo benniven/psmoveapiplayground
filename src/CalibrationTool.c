@@ -45,24 +45,24 @@ int xmain(int arg, char** args) {
 		if (image)
 			break;
 	}
-	IplImage *gray_image = cvCreateImage(cvGetSize(image), 8, 1);
-
+	IplImage *gray_image1 = cvCreateImage(cvGetSize(image), 8, 1);
+	IplImage *gray_image2 = cvCreateImage(cvGetSize(image), 8, 1);
 	// Capture Corner views loop until we've got n_boards
 	// succesful captures (all corners on the board are found)
 	while (successes < n_boards) {
 		// Skp every skip_n frames to allow user to move chessboard
 		// skip a second to allow user to move the chessboard
 		image = camera_control_query_frame(cc); // Get next image
-		cvCvtColor(image, gray_image, CV_BGR2GRAY);
+		cvCvtColor(image, gray_image1, CV_BGR2GRAY);
 
 		int key = cvWaitKey(1);
 		corner_count = 0;
 
 		// Find chessboard corners:
-		int found = cvFindChessboardCorners(gray_image, board_sz, corners, &corner_count, CV_CALIB_CB_ADAPTIVE_THRESH | CV_CALIB_CB_FILTER_QUADS);
+		int found = cvFindChessboardCorners(gray_image1, board_sz, corners, &corner_count, CV_CALIB_CB_ADAPTIVE_THRESH | CV_CALIB_CB_FILTER_QUADS);
 
 		// Get subpixel accuracy on those corners
-		cvFindCornerSubPix(gray_image, corners, corner_count, cvSize(11, 11), cvSize(-1, -1), cvTermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
+		cvFindCornerSubPix(gray_image1, corners, corner_count, cvSize(11, 11), cvSize(-1, -1), cvTermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
 		// Draw it
 		cvDrawChessboardCorners(image, board_sz, corners, corner_count, found);
 
@@ -141,9 +141,14 @@ int xmain(int arg, char** args) {
 		IplImage *t = cvCloneImage(image);
 		cvShowImage("Calibration", image); // Show raw image
 		cvRemap(t, image, mapx, mapy, CV_INTER_LINEAR + CV_WARP_FILL_OUTLIERS, cvScalarAll(0)); // undistort image
-		cvReleaseImage(&t);
 		cvShowImage("Undistorted", image); // Show corrected image
 
+		cvCvtColor(image, gray_image1, CV_BGR2GRAY);
+		cvCvtColor(t, gray_image2, CV_BGR2GRAY);
+		cvAbsDiff(gray_image1, gray_image2, gray_image1);
+		cvShowImage("Difference", gray_image1); // Show corrected image
+
+		cvReleaseImage(&t);
 		// Handle pause/unpause and esc
 		int c = cvWaitKey(15);
 		if (c == 'p') {

@@ -42,30 +42,40 @@
 #include "tracker/tracked_color.h"
 #include "htmltrace/tracker_trace.h"
 
+#define PRINT_DEBUG_STATS			// shall graphical statistics be printed to the image
 #define GOOD_EXPOSURE 2051			// a very low exposure that was found to be good for tracking
 #define ROIS 5                   	// the number of levels of regions of interest (roi)
 #define BLINKS 4                 	// number of diff images to create during calibration
 #define BLINK_DELAY 50             	// number of milliseconds to wait between a blink
-#define CALIB_MIN_SIZE 50		 	// minimum size of the estimated glowing sphere during calibration process
+#define CALIB_MIN_SIZE 50		 	// minimum size of the estimated glowing sphere during calibration process (in pixel)
 #define CALIB_SIZE_STD 10	     	// maximum standard deviation (in %) of the glowing spheres found during calibration process
-#define CALIB_MAX_DIST 30		 	// minimum size of the estimated glowing sphere during calibration process
-#define COLOR_FILTER_RANGE_H 7		// +- H-Range of the hsv-colorfilter
+#define CALIB_MAX_DIST 30		 	// maximum displacement of the separate found blobs
+#define COLOR_FILTER_RANGE_H 5		// +- H-Range of the hsv-colorfilter
 #define COLOR_FILTER_RANGE_S 85		// +- s-Range of the hsv-colorfilter
 #define COLOR_FILTER_RANGE_V 85		// +- v-Range of the hsv-colorfilter
-#define CAMERA_FOCAL_LENGTH 28.3	// focal lenght constant of the ps-eye camera
-#define CAMERA_PIXEL_HEIGHT 5		// pixel height constant of the ps-eye camera
-#define PS_MOVE_DIAMETER 45			// orb diameter constant of the ps-move controller
-#define CALIBRATION_DIFF_T 20		// the threshold the calibration uses to clean the image
-#define TRACKER_QUALITY_T1 0.3		// good quality threshold1 for the tracker
-#define TRACKER_QUALITY_T2 0.3		// good quality threshold2 for the tracker
-#define TRACKER_QUALITY_T3 3		// good quality threshold3 for the tracker
+#define CAMERA_FOCAL_LENGTH 28.3	// focal lenght constant of the ps-eye camera in (degrees)
+#define CAMERA_PIXEL_HEIGHT 5		// pixel height constant of the ps-eye camera in (µm)
+#define PS_MOVE_DIAMETER 47			// orb diameter constant of the ps-move controller in (mm)
+/* Thresholds */
+#define ROI_ADJUST_FPS_T 160		// the minimum fps to be reached, if a better roi-center adjusment is to be perfomred
+#define CALIBRATION_DIFF_T 20		// during calibration, all grey values in the diff image below this value are set to black
+// if tracker thresholds not met, sphere is deemed not to be found
+#define TRACKER_QUALITY_T1 0.3		// minimum ratio of number of pixels in blob vs pixel of estimated circle.
+#define TRACKER_QUALITY_T2 0.7		// maximum allowed change of the radius in percent, compared to the last estimated radius
+#define TRACKER_QUALITY_T3 3		// minimum radius
 #define TRACKER_ADAPTIVE_XY 1		// specifies to use a adaptive x/y smoothing
 #define TRACKER_ADAPTIVE_Z 1		// specifies to use a adaptive z smoothing
 #define COLOR_ADAPTION_QUALITY 35 	// maximal distance between the first estimated color and the newly estimated
-#define COLOR_UPDATE_RATE 1	 	 	// every x seconds adapt to the color
-#define COLOR_UPDATE_QUALITY_T1 0.8	// good quality threshold3 for the color adaption
-#define COLOR_UPDATE_QUALITY_T2 0.8	// good quality threshold3 for the color adaption
-#define COLOR_UPDATE_QUALITY_T3 6	// good quality threshold3 for the color adaption
+#define COLOR_UPDATE_RATE 1	 	 	// every x seconds adapt to the color, 0 means no adaption
+// if color thresholds not met, color is not adapted
+#define COLOR_UPDATE_QUALITY_T1 0.8	// minimum ratio of number of pixels in blob vs pixel of estimated circle.
+#define COLOR_UPDATE_QUALITY_T2 0.2	// maximum allowed change of the radius in percent, compared to the last estimated radius
+#define COLOR_UPDATE_QUALITY_T3 6	// minimum radius
+#ifdef WIN32
+#define PSEYE_BACKUP_FILE "PSEye_backup_win.ini"
+#else
+#define PSEYE_BACKUP_FILE "PSEye_backup_v4l.ini"
+#endif
 struct _PSMoveTracker {
 	CameraControl* cc;
 	IplImage* frame; // the current frame of the camera
@@ -101,6 +111,7 @@ struct _PSMoveTracker {
 	float color_t1; // quality threshold3 for the color adaption
 	float color_t2; // quality threshold3 for the color adaption
 	float color_t3; // quality threshold3 for the color adaption
+	float color_update_rate; // how often shall the color be adapted (in seconds), 0 means never
 
 	// internal variables (debug)
 	float debug_fps; // the current FPS achieved by "psmove_tracker_update"
@@ -226,10 +237,9 @@ void psmove_tracker_estimate_3d_pos(CvSeq* cont, CvPoint* center, float* radius)
  *
  * Returns: a better center point for the current ROI.
  */
-CvPoint getBetterROICenter(TrackedController* tc, PSMoveTracker* t);
+CvPoint psmove_tracker_better_roi_center(TrackedController* tc, PSMoveTracker* t);
 
 // -------- END: internal functions only
-
 
 PSMoveTracker *
 psmove_tracker_new(int camera) {
@@ -257,7 +267,7 @@ psmove_tracker_new(int camera) {
 	t->color_t1 = COLOR_UPDATE_QUALITY_T1;
 	t->color_t2 = COLOR_UPDATE_QUALITY_T2;
 	t->color_t3 = COLOR_UPDATE_QUALITY_T3;
-
+	t->color_update_rate = COLOR_UPDATE_RATE;
 	// prepare available colors for tracking
 	psmove_tracker_prepare_colors(t);
 
@@ -268,6 +278,11 @@ psmove_tracker_new(int camera) {
 	// use static exposure
 	t->exposure = GOOD_EXPOSURE;
 	// use static adaptive exposure
+
+	// backup the systems settings, if not already backuped
+	if (th_file_exists(PSEYE_BACKUP_FILE) == 0)
+		camera_control_backup_sytem_settings(t->cc, PSEYE_BACKUP_FILE);
+
 	//t->exposure = psmove_tracker_adapt_to_light(t, 25, 2051, 4051);
 	camera_control_set_parameters(t->cc, 0, 0, 0, t->exposure, 0, 0xffff, 0xffff, 0xffff, -1, -1);
 
@@ -287,6 +302,7 @@ psmove_tracker_new(int camera) {
 	for (i = 1; i < ROIS; i++) {
 		IplImage* z = t->roiI[i - 1];
 		int w = z->width;
+		// TODO: nicht fix 60%
 		t->roiI[i] = cvCreateImage(cvSize(w * 0.6, w * 0.6), z->depth, 3);
 		t->roiM[i] = cvCreateImage(cvSize(w * 0.6, w * 0.6), z->depth, 1);
 	}
@@ -449,7 +465,7 @@ enum PSMoveTracker_Status psmove_tracker_enable_with_color(PSMoveTracker *tracke
 		} else if (sizes[i] <= CALIB_MIN_SIZE) {
 			psmove_html_trace_array_item_at(i, "contours", "too small");
 		} else if (dist >= CALIB_MAX_DIST) {
-			psmove_html_trace_array_item_at(i, "contours", "too far away");
+			psmove_html_trace_array_item_at(i, "contours", "too far apart");
 		} else {
 			psmove_html_trace_array_item_at(i, "contours", "OK");
 			// all checks passed, increase the number of valid contours
@@ -564,12 +580,14 @@ int psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController* 
 		IplImage *roi_i = t->roiI[tc->roi_level];
 		IplImage *roi_m = t->roiM[tc->roi_level];
 
-		// adjust the ROI, so that the blob is fully visible
-		CvPoint nRoiCenter = getBetterROICenter(tc, tracker);
-		if (nRoiCenter.x != -1) {
-			tc->roi_x = nRoiCenter.x;
-			tc->roi_y = nRoiCenter.y;
-			psmove_tracker_fix_roi(tc, roi_i->width, roi_i->height, t->roiI[0]->width, t->roiI[0]->height);
+		// adjust the ROI, so that the blob is fully visible, but only if we have a reasonable FPS
+		if (t->debug_fps > ROI_ADJUST_FPS_T) {
+			CvPoint nRoiCenter = psmove_tracker_better_roi_center(tc, tracker);
+			if (nRoiCenter.x != -1) {
+				tc->roi_x = nRoiCenter.x;
+				tc->roi_y = nRoiCenter.y;
+				psmove_tracker_fix_roi(tc, roi_i->width, roi_i->height, t->roiI[0]->width, t->roiI[0]->height);
+			}
 		}
 
 		// apply the ROI
@@ -586,7 +604,6 @@ int psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController* 
 		psmove_tracker_biggest_contour(roi_m, t->storage, &contourBest, &sizeBest);
 
 		if (contourBest) {
-			sphere_found = 1;
 			CvMoments mu;
 			CvRect br = cvBoundingRect(contourBest, 0);
 
@@ -594,6 +611,12 @@ int psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController* 
 			cvSet(roi_m, th_black, 0x0);
 			cvDrawContours(roi_m, contourBest, th_white, th_white, -1, CV_FILLED, 8, cvPoint(0, 0));
 
+#ifdef PRINT_DEBUG_STATS
+			if (tc->next == 0x0)
+				cvShowImage("0", roi_m);
+			else
+				cvShowImage("1", roi_m);
+#endif
 			// calucalte image-moments
 			cvMoments(roi_m, &mu, 0);
 			CvPoint p = cvPoint(mu.m10 / mu.m00, mu.m01 / mu.m00);
@@ -612,7 +635,7 @@ int psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController* 
 				float rDiff = abs(tc->rs - tc->r);
 				// calcualte a adaptive smoothing factor
 				// a big distance leads to no smoothing, a small one to strong smoothing
-				float rf = MIN(rDiff/4+0.05,1);
+				float rf = MIN(rDiff/4+0.15,1);
 
 				// apply adaptive smoothing of the radius
 				tc->rs = tc->rs * (1 - rf) + tc->r * rf;
@@ -624,7 +647,7 @@ int psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController* 
 				// a big distance between the old and new center of mass results in no smoothing
 				// a little one to strong smoothing
 				float diff = th_dist(oldMCenter, newMCenter);
-				float f = MIN(diff / 7 + 0.05, 1);
+				float f = MIN(diff / 7 + 0.15, 1);
 				// apply adaptive smoothing
 				tc->x = tc->x * (1 - f) + (c.x + tc->roi_x) * f;
 				tc->y = tc->y * (1 - f) + (c.y + tc->roi_y) * f;
@@ -637,23 +660,32 @@ int psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController* 
 			// calculate the quality of the tracking
 			int pixelInBlob = cvCountNonZero(roi_m);
 			float pixelInResult = tc->r * tc->r * th_PI;
-			float TQ1 = 0;
-			float TQ2 = 0;
-			float TQ3 = tc->r;
+			float tq1 = 0;
+			float tq2 = 0;
+			float tq3 = tc->r;
 
 			// The quality checks are all performed on the radius of the blob
 			// its old radius and size.
 
+			tq1 = pixelInBlob / pixelInResult;
+
+			// always check pixelration and minimal size
+			sphere_found = tq1 > t->tracker_t1 && tq3 > t->tracker_t3;
+
+			if (tq1 > 0.85) {
+				tc->x = tc->mx;
+				tc->y = tc->my;
+			}
 			// only perform check if we already found the sphere once
 			if (oldRadius > 0) {
-				TQ1 = pixelInBlob / pixelInResult;
-				TQ2 = 1 - abs(oldRadius - tc->r) / (oldRadius + FLT_EPSILON);
+				tq2 = abs(oldRadius - tc->r) / (oldRadius + FLT_EPSILON);
 
 				// decrease TQ1 by half if below 20px (gives better results if controller is far away)
 				if (pixelInBlob < 20)
-					TQ1 = TQ1 * 0.5;
+					tq1 = tq1 * 0.5;
 
-				sphere_found = TQ1 > t->tracker_t1 && TQ2 > t->tracker_t2 && TQ3 > t->tracker_t2;
+				// additionally check for to big changes
+				sphere_found = sphere_found && tq2 < t->tracker_t2;
 			}
 
 			// only if the quality is okay update the future ROI
@@ -663,12 +695,12 @@ int psmove_tracker_update_controller(PSMoveTracker *tracker, TrackedController* 
 				// only if 	1) the sphere has been found
 				// AND		2) the UPDATE_RATE has passed
 				// AND		3) the tracking-quality is high;
-				int update_rate_passed = 0;
+				int do_color_adaption = 0;
 				time_t now = time(0);
-				if (difftime(now, tc->last_color_update) > COLOR_UPDATE_RATE)
-					update_rate_passed = 1;
+				if (t->color_update_rate > 0 && difftime(now, tc->last_color_update) > t->color_update_rate)
+					do_color_adaption = 1;
 
-				if (update_rate_passed && TQ1 > t->color_t1 && TQ2 > t->color_t2 && TQ3 > t->color_t3) {
+				if (do_color_adaption && tq1 > t->color_t1 && tq2 < t->color_t2 && tq3 > t->color_t3) {
 					// calculate the new estimated color (adaptive color estimation)
 					CvScalar newColor = cvAvg(t->frame, roi_m);
 					th_plus(tc->eColor.val, newColor.val, tc->eColor.val, 3);
@@ -760,14 +792,15 @@ int psmove_tracker_update(PSMoveTracker *tracker, PSMove *move) {
 	hp_timer_stop(tracker->timer);
 
 	// draw all/one controller information to camera image
+#ifdef PRINT_DEBUG_STATS
 	psmove_tracker_draw_tracking_stats(tracker);
-
+#endif
 	// return the number of spheres found
 	return spheres_found;
 
 }
 
-int psmove_tracker_get_position(PSMoveTracker *tracker, PSMove *move, int *x, int *y, int *radius) {
+int psmove_tracker_get_position(PSMoveTracker *tracker, PSMove *move, float *x, float *y, float *radius) {
 	TrackedController* tc = tracked_controller_find(tracker->controllers, move);
 	if (tc != 0x0) {
 		if (x != 0x0)
@@ -784,20 +817,18 @@ int psmove_tracker_get_position(PSMoveTracker *tracker, PSMove *move, int *x, in
 }
 
 void psmove_tracker_free(PSMoveTracker *tracker) {
+	if (th_file_exists(PSEYE_BACKUP_FILE))
+		camera_control_restore_sytem_settings(tracker->cc, PSEYE_BACKUP_FILE);
 	hp_timer_release(tracker->timer);
-
 	cvReleaseMemStorage(&tracker->storage);
-
 	int i = 0;
 	for (; i < ROIS; i++) {
 		cvReleaseImage(&tracker->roiM[0]);
 		cvReleaseImage(&tracker->roiI[0]);
 	}
-
 	cvReleaseStructuringElement(&tracker->kCalib);
 	tracked_controller_release(&tracker->controllers, 1);
 	tracked_color_release(&tracker->available_colors, 1);
-
 }
 
 // -------- Implementation: internal functions only
@@ -1056,7 +1087,7 @@ void psmove_tracker_estimate_3d_pos(CvSeq* cont, CvPoint* center, float* radius)
 	*radius = sqrt(d) / 2;
 }
 
-CvPoint getBetterROICenter(TrackedController* tc, PSMoveTracker* t) {
+CvPoint psmove_tracker_better_roi_center(TrackedController* tc, PSMoveTracker* t) {
 	CvPoint erg = cvPoint(-1, -1);
 	CvScalar min, max;
 	th_minus(tc->eColorHSV.val, t->rHSV.val, min.val, 3);
