@@ -23,18 +23,14 @@
 
 struct _CameraControl {
 	int cameraID;
-#ifdef WIN32
-#ifdef USE_CL_DRIVER
+	IplImage* frame;
+	IplImage* frame3chUndistort;
+#if defined(WIN32) && defined(USE_CL_DRIVER)
 	CLEyeCameraInstance camera;
 	IplImage* frame3ch;
 	PBYTE pCapBuffer;
 #else
 	CvCapture* capture;
-
-#endif
-	IplImage* frame;
-	IplImage* frame3chUndistort;
-#else
 	char device[256]; // used to open the camera on linux
 	CvCapture* capture;
 #endif
@@ -66,12 +62,10 @@ void cc_set_parameters_linux(CameraControl* cc, int autoE, int autoG, int autoWB
 		int brightness);
 #endif
 
-void cc_init_members(CameraControl* cc);
-
 CameraControl* camera_control_new(int cameraID) {
 
 	CameraControl* cc = (CameraControl*) calloc(1, sizeof(CameraControl));
-	cc_init_members(cc);
+	cc->cameraID = cameraID;
 
 #if defined(WIN32) && defined(USE_CL_DRIVER)
 	int cams = CLEyeGetCameraCount();
@@ -90,8 +84,8 @@ CameraControl* camera_control_new(int cameraID) {
 	cc->frame3ch = cvCreateImage(cvSize(w, h), IPL_DEPTH_8U, 3);
 	CLEyeCameraStart(cc->camera);
 #else
-#if !defined(WIN32)
-	sprintf(cc->device, "/dev/video%s", cc->cameraID);
+#ifndef WIN32
+	sprintf(cc->device, "/dev/video%d", cc->cameraID);
 #endif
 	cc->capture = cvCaptureFromCAM(cc->cameraID);
 	cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_WIDTH, 640);
@@ -101,22 +95,6 @@ CameraControl* camera_control_new(int cameraID) {
 #endif
 
 	return cc;
-}
-
-void cc_init_members(CameraControl* cc) {
-	cc->auto_exp = 0;
-	cc->auto_wb = 0;
-	cc->auto_gain = 0;
-	cc->gain = 0;
-	cc->exposure = 0;
-	cc->wb_red = 0;
-	cc->wb_green = 0;
-	cc->wb_blue = 0;
-	cc->contrast = 0;
-	cc->brightness = 0;
-
-	cc->mapx = 0;
-	cc->mapy = 0;
 }
 
 void camera_control_read_calibration(CameraControl* cc, char* intrinsicsFile, char* distortionFile) {
@@ -390,8 +368,7 @@ void cc_restore_sytem_settings_linux(CameraControl* cc, const char* file) {
 
 void cc_set_parameters_win(CameraControl* cc, int autoE, int autoG, int autoWB, int exposure, int gain, int wbRed, int wbGreen, int wbBlue, int contrast,
 		int brightness) {
-#ifdef WIN32
-#ifdef USE_CL_DRIVER
+#if defined(WIN32) && defined(USE_CL_DRIVER)
 	if (autoE >= 0)
 		CLEyeSetCameraParameter(cc->camera, CLEYE_AUTO_EXPOSURE, autoE > 0);
 	if (autoG >= 0)
@@ -408,7 +385,9 @@ void cc_set_parameters_win(CameraControl* cc, int autoE, int autoG, int autoWB, 
 		CLEyeSetCameraParameter(cc->camera, CLEYE_WHITEBALANCE_GREEN, round((255 * wbGreen) / 0xFFFF));
 	if (wbBlue >= 0)
 		CLEyeSetCameraParameter(cc->camera, CLEYE_WHITEBALANCE_BLUE, round((255 * wbBlue) / 0xFFFF));
-#else
+#endif
+
+#if defined(WIN32) && !defined(USE_CL_DRIVER)
 	int val;
 	HKEY hKey;
 	DWORD l = sizeof(DWORD);
@@ -442,7 +421,6 @@ void cc_set_parameters_win(CameraControl* cc, int autoE, int autoG, int autoWB, 
 	cc->capture = cvCaptureFromCAM(cc->cameraID);
 	cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_WIDTH, 640);
 	cvSetCaptureProperty(cc->capture, CV_CAP_PROP_FRAME_HEIGHT, 480);
-#endif
 #endif
 }
 void cc_set_parameters_linux(CameraControl* cc, int autoE, int autoG, int autoWB, int exposure, int gain, int wbRed, int wbGreen, int wbBlue, int contrast,
