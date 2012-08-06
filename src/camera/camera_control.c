@@ -7,7 +7,7 @@
 #include "opencv2/highgui/highgui_c.h"
 #include "opencv2/imgproc/imgproc_c.h"
 
-#define USE_CL_DRIVER
+//#define USE_CL_DRIVER
 #define CL_DRIVER_REG_PATH "Software\\PS3EyeCamera\\Settings"
 
 #ifdef WIN32
@@ -32,7 +32,6 @@ struct _CameraControl {
 #else
 	CvCapture* capture;
 	char device[256]; // used to open the camera on linux
-	CvCapture* capture;
 #endif
 	// if a negative value is passed, that means it is not changed
 	int auto_exp; // value range [0-0xFFFF]
@@ -153,17 +152,19 @@ IplImage* camera_control_query_frame(CameraControl* cc) {
 }
 
 void camera_control_backup_sytem_settings(CameraControl* cc, const char* file) {
-#ifdef WIN32
+#if defined(WIN32) && !defined(USE_CL_DRIVER)
 	cc_backup_sytem_settings_win(cc, file);
-#else
+#endif
+#ifndef WIN32
 	cc_backup_sytem_settings_linux(cc,file);
 #endif
 }
 
 void camera_control_restore_sytem_settings(CameraControl* cc, const char* file) {
-#ifdef WIN32
+#if defined(WIN32) && !defined(USE_CL_DRIVER)
 	cc_restore_sytem_settings_win(cc, file);
-#else
+#endif
+#ifndef WIN32
 	cc_restore_sytem_settings_linux(cc,file);
 #endif
 }
